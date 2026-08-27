@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environment
+.venv/
+
+# Environment / secrets
+.env
+.env.*
+
+# Generated output
+output/*
+!output/.gitkeep
+
+# Generated media
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.wav
+*.mp3
+
+# AI model files
+*.safetensors
+*.ckpt
+*.pth
+*.onnx
+*.gguf
+
+# Caches
+.cache/
+.pytest_cache/
+.mypy_cache/
+
+# OS
+.DS_Store
+Thumbs.db
