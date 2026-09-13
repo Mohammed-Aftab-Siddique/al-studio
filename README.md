@@ -34,31 +34,183 @@ sudo apt install ffmpeg espeak-ng python3.12 python3.12-venv
 
 ## Installation
 
+Clone the repository and enter it:
+
+```bash
+git clone <your-fork-or-repository-url> al-studio
+cd al-studio
+```
+
+Create an isolated Python environment. AL Studio currently supports Python
+3.12 only because of its tested Kokoro dependency combination:
+
 ```bash
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -e .
+```
+
+The editable install means source edits are picked up immediately. Confirm the
+command and system dependencies are available:
+
+```bash
 al-studio --help
+ffmpeg -version
+espeak-ng --version
 ```
 
-## Quick Start
+On the first real speech synthesis, Kokoro downloads its model files to the
+local Hugging Face cache. Keep the terminal connected to the internet for that
+first run; future runs normally use the cache.
 
-Validate the bundled project:
+## Where Your Files Go
+
+The repository deliberately keeps private creative work out of Git:
+
+```text
+assets/                 Your local reusable images and audio (Git-ignored)
+├── characters/
+├── scenes/
+├── props/
+├── audio/
+└── music/
+projects/               Your local project and script JSON files (Git-ignored)
+└── my-story/
+    ├── project.json
+    └── script.json
+output/                 Generated media and render metadata (Git-ignored)
+└── my-story/
+```
+
+`assets/`, `projects/`, and `output/` contain tracked `.gitkeep` placeholders
+only. Put your actual images, audio, stories, and renders in the directories
+above; they remain local unless you intentionally change the ignore rules.
+
+## Create Your First Project
+
+Create local directories for a project and its reusable visual assets:
 
 ```bash
-al-studio validate projects/starter-project/project.json
+mkdir -p assets/characters assets/scenes assets/props
+mkdir -p projects/my-story
 ```
 
-Render the 30-second example:
+Add these three visual files:
+
+```text
+assets/characters/alex.svg
+assets/scenes/room.svg
+assets/props/plant.svg
+```
+
+The first renderer accepts `.svg`, `.png`, and `.webp` visual assets. SVG is a
+good starting point because it stays crisp at any render size. Use a character
+image that faces right; AL Studio can mirror it for left-facing states later.
+
+Create `projects/my-story/project.json`:
+
+```json
+{
+  "schema_version": 1,
+  "name": "my-story",
+  "assets": [
+    {"id": "alex-visual", "kind": "character", "path": "characters/alex.svg"},
+    {"id": "room", "kind": "scene", "path": "scenes/room.svg"},
+    {"id": "plant", "kind": "prop", "path": "props/plant.svg"}
+  ],
+  "characters": [
+    {
+      "name": "Alex",
+      "voice_id": "am_adam",
+      "visual_asset_id": "alex-visual",
+      "animation": {"idle_motion": true, "mouth_style": "simple"}
+    }
+  ],
+  "scenes": [
+    {
+      "id": "room",
+      "background_asset_id": "room",
+      "prop_asset_ids": ["plant"],
+      "camera": {"x": 0, "y": 0, "zoom": 1.0}
+    }
+  ],
+  "render": {"width": 1280, "height": 720, "fps": 24}
+}
+```
+
+Asset `path` values are always relative to `assets/`; paths cannot be absolute
+or leave that directory. Valid asset kinds are `character`, `scene`, `prop`,
+`audio`, and `music`.
+
+Validate the project and inspect what AL Studio resolves before writing a
+script:
 
 ```bash
-al-studio render projects/first-story/project.json projects/first-story/script.json --output output/first-story --verbose
+al-studio validate projects/my-story/project.json
+al-studio inspect-assets projects/my-story/project.json
 ```
 
-The MP4 is written to `output/first-story/final/first-story.mp4`.
+## Write a Story Script
 
-Use `--dry-run` to validate and record a render plan without creating media.
+Create `projects/my-story/script.json`:
+
+```json
+{
+  "schema_version": 1,
+  "scenes": [
+    {
+      "scene_id": "room",
+      "events": [
+        {
+          "type": "dialogue",
+          "speaker": "Alex",
+          "text": "Hello. This is my first story made with AL Studio.",
+          "caption": "Hello. This is my first story made with AL Studio."
+        },
+        {"type": "action", "name": "wave", "duration_seconds": 0.8},
+        {"type": "caption", "text": "The End", "duration_seconds": 1.5}
+      ]
+    }
+  ]
+}
+```
+
+`scene_id` must match a scene from `project.json`; `speaker` must match a
+character name. Dialogue duration comes from the generated voice audio. The
+other supported event types—`action`, `ambience`, `sound_effect`, and
+`caption`—need a positive `duration_seconds`.
+
+Actions are currently timeline markers rather than pose changes, and ambience
+or sound-effect events are parsed but not yet mixed from source files. See
+[app/script/FORMAT.md](app/script/FORMAT.md) for the formal format reference.
+
+## Render Your Story
+
+First run a dry run. It validates assets and project/script data without
+calling TTS or producing media:
+
+```bash
+al-studio render \
+  projects/my-story/project.json \
+  projects/my-story/script.json \
+  --output output/my-story-plan \
+  --dry-run --verbose
+```
+
+Then render the complete story:
+
+```bash
+al-studio render \
+  projects/my-story/project.json \
+  projects/my-story/script.json \
+  --output output/my-story \
+  --verbose
+```
+
+`--verbose` prints the current stage order. A short CPU render can take longer
+than the story duration because it includes voice synthesis and FFmpeg video
+encoding.
 
 ## CLI
 
@@ -66,34 +218,50 @@ Use `--dry-run` to validate and record a render plan without creating media.
 al-studio validate PROJECT [--assets ASSET_ROOT]
 al-studio inspect-assets PROJECT [--assets ASSET_ROOT]
 al-studio voice-preview --text TEXT --voice VOICE_ID [--output FILE.wav]
-al-studio render PROJECT SCRIPT [--assets ASSET_ROOT] [--output DIRECTORY] [--dry-run] [--verbose]
+al-studio render PROJECT SCRIPT [--assets ASSET_ROOT] [--output DIRECTORY]
+                  [--dry-run] [--verbose]
 ```
 
-For example, preview Alex's voice:
+Use `--assets` only when your reusable asset root is somewhere other than the
+repository's `assets/` directory. Preview a voice before assigning it to a
+character:
 
 ```bash
-al-studio voice-preview --voice am_adam --text "Hello from AL Studio." --output output/alex.wav
+al-studio voice-preview \
+  --voice am_adam \
+  --text "Hello from AL Studio." \
+  --output output/alex-preview.wav
 ```
 
-## Project and Script Data
+## Find the Rendered Output
 
-`project.json` defines versioned assets, characters, scenes, and render settings. Character voice IDs such as `am_adam` remain provider-neutral in project data. Asset paths are relative to `assets/` and cannot escape that root.
+The example render above produces:
 
-`script.json` defines scenes and timed events. Dialogue uses `speaker`, `text`, and an optional `caption`; its duration comes from generated audio. `action`, `ambience`, `sound_effect`, and `caption` events require `duration_seconds`.
+```text
+output/my-story/
+├── metadata.json                Render completion or dry-run state
+├── dialogue/                    Generated character WAV files
+├── frames/                      Deterministic SVG animation frames
+├── audio/mix.wav                Final mixed dialogue audio
+├── subtitles/captions.srt       Time-aligned subtitles
+└── final/my-story.mp4           Final H.264/AAC video
+```
 
-See [projects/first-story/project.json](projects/first-story/project.json), [projects/first-story/script.json](projects/first-story/script.json), and [app/script/FORMAT.md](app/script/FORMAT.md) for complete examples.
+Open `final/my-story.mp4` in your normal media player. Keep the whole output
+directory if a render fails: `metadata.json`, the dialogue WAVs, frames, and
+mix identify which stage completed. Fix the reported project, script, asset,
+or TTS issue and rerun the same command.
 
-## Output and Troubleshooting
-
-Each render directory contains `metadata.json`, dialogue WAVs, SVG frames, `audio/mix.wav`, `subtitles/captions.srt`, and `final/<project>.mp4`. Retain it on failure: its intermediate artifacts and metadata show where the render stopped.
+## Tests and Development
 
 Run tests with:
 
 ```bash
-.venv/bin/python -m pytest
+.venv/bin/python -m pytest -q
 ```
 
-See [TESTING.md](TESTING.md), [BENCHMARK.md](BENCHMARK.md), and [LICENSES.md](LICENSES.md) for development, performance, and license details.
+For source checks in a development environment, install `ruff` and `mypy`,
+then run `ruff check app tests` and `mypy app`.
 
 ## Current Limitations
 
