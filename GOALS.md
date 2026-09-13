@@ -103,17 +103,17 @@ core pipeline.
 
 ### Quality and Release Readiness
 
-- [ ] Add a test strategy separating unit, integration, and full-render
+- [x] Add a test strategy separating unit, integration, and full-render
   tests; make the standard test command documented and repeatable.
-- [ ] Add code formatting, linting, type checking, and CI once the workflow
+- [x] Add code formatting, linting, type checking, and CI once the workflow
   is stable.
-- [ ] Benchmark the reference project on CPU and document expected runtime,
+- [x] Benchmark the reference project on CPU and document expected runtime,
   disk use, and limitations.
-- [ ] Write a complete README: installation, prerequisites, quick start,
+- [x] Write a complete README: installation, prerequisites, quick start,
   project format, CLI reference, asset licensing, and troubleshooting.
-- [ ] Publish a versioned example project and validate that a clean setup
+- [x] Publish a versioned example project and validate that a clean setup
   can render it end-to-end.
-- [ ] Review licenses for bundled assets and third-party dependencies before
+- [x] Review licenses for bundled assets and third-party dependencies before
   public release.
 
 ### Optional AI Enhancements (After the Deterministic Pipeline Works)

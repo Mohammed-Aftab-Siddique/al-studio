@@ -7,6 +7,22 @@ name = "al-studio"
 version = "0.1.0"
 description = "Script-driven 2D animation studio"
 requires-python = ">=3.12,<3.13"
+dependencies = ["kokoro>=0.9.4", "numpy", "soundfile"]
+
+[project.scripts]
+al-studio = "app.cli.main:main"
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+markers = ["integration: exercises local FFmpeg/Kokoro dependencies", "full_render: produces a reference MP4"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+check_untyped_defs = true
 
 [tool.setuptools.packages.find]
 where = ["."]
