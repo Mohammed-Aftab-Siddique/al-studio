@@ -54,8 +54,10 @@ BENCHMARK.md
 TESTING.md
 
 # Local render inputs and reusable assets
-projects/
-assets/
+projects/*
+!projects/.gitkeep
+assets/*
+!assets/.gitkeep
 
 # OS
 .DS_Store
