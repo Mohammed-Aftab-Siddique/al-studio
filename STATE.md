@@ -18,8 +18,9 @@ tool, not the foundation of the animation pipeline.
 
 ## Implementation Status
 
-The repository has completed the **Voice Engine** and **Project, Character,
-and Asset Model** milestones. Script and dialogue orchestration is next.
+The repository has completed the **Voice Engine**, **Project/Asset Model**,
+and **Script and Dialogue** milestones. Deterministic scene and animation
+rendering is next.
 
 Implemented and verified:
 
@@ -48,10 +49,14 @@ Implemented and verified:
   example project at `projects/starter-project/project.json`.
 - Project-model tests for schema validation, asset resolution, and backwards
   compatibility.
+- A documented versioned JSON script format supporting dialogue, actions,
+  ambience, sound effects, and captions.
+- Script validation and a deterministic timeline builder that resolves
+  project characters, synthesizes dialogue through `VoiceEngine`, measures
+  WAV duration, and emits timestamped events.
 
 Not implemented yet:
 
-- Script format and dialogue orchestration.
 - 2D animation and scene rendering.
 - Scene, audio-mixing, subtitle, compositor/video, CLI, and automation
   systems.
@@ -83,6 +88,6 @@ configuration warning), rather than AL Studio code.
 
 ## Immediate Next Step
 
-Design a human-editable script format and parse it into a validated dialogue
-and scene timeline. This will connect the example project’s characters and
-voice IDs to actual dialogue synthesis.
+Implement deterministic 2D scene and character rendering, beginning with the
+starter background, Alex asset, and dialogue-timed mouth animation. This is
+the visual half of the first end-to-end MP4 vertical slice.

@@ -151,9 +151,9 @@ discussed and committed.
   11      Character consistency                  Planned
   12      AI enhancements                        Planned
 
-Current position: **Phase 3**. The Voice Engine and Project, Character, and
-Asset Model milestones are complete. Script parsing and dialogue timing are
-next.
+Current position: **Script and Dialogue complete**. The Voice Engine,
+Project/Asset Model, and Script/Dialogue milestones are complete.
+Deterministic 2D rendering is next.
 
 # Phase 0 --- Hardware and Environment
 
@@ -807,10 +807,30 @@ Verification result:
 18 passed
 ```
 
-# Next Planned Step --- Script Format and Dialogue Timeline
+# Script Format and Dialogue Timeline
 
-Design a human-editable script format, parse it into a validated timeline,
-and connect dialogue speakers to the configured characters and voice engine.
+Implemented a schema-version 1 JSON script format, documented in
+`app/script/FORMAT.md`, and added a matching `script.json` to the starter
+project. Scripts support dialogue, actions, ambience, sound effects, and
+captions.
+
+`DialogueTimelineBuilder` validates scene and speaker references against the
+project, synthesizes dialogue through the provider-neutral `VoiceEngine`,
+reads the WAV duration, and generates sequential timestamped timeline events.
+The same dialogue interval now supplies the future animation, audio, and
+caption stages with a common timing contract.
+
+Verification result:
+
+```text
+.venv/bin/python -m pytest tests/test_script_parser.py tests/test_dialogue_timeline.py -v
+10 passed
+```
+
+# Next Planned Step --- Deterministic 2D Animation and Scene Rendering
+
+Render the starter scene and character as deterministic frames, with simple
+dialogue-timed mouth animation. This begins the visual path to a full MP4.
 
 # Working Principles Going Forward
 

@@ -1,9 +1,9 @@
 # AL Studio — Low-Level Design
 
 > Pipeline design aligned with `GOALs.md`. Status reflects the repository on
-> 2026-09-13: the voice engine, versioned project configuration, character
-> configuration, and safe asset resolution are implemented; all other
-> pipeline components described below are planned.
+> 2026-09-13: the voice engine, project/asset model, script parser, and
+> dialogue timeline are implemented; the visual and final-output pipeline
+> components described below are planned.
 
 ## Design Principles
 
@@ -69,15 +69,16 @@ flowchart TD
 
     classDef implemented fill:#c8e6c9,stroke:#2e7d32,color:#1b5e20;
     classDef planned fill:#e3f2fd,stroke:#1565c0,color:#0d47a1;
-    class kokoro,validate,manager,schema,character implemented;
-    class input,script,timeline,voice,audioLines,scene,animation,frames,audio,mix,captions,subtitles,compositor,mp4,cli planned;
+    class kokoro,validate,manager,schema,script,timeline,character,voice,audioLines implemented;
+    class input,scene,animation,frames,audio,mix,captions,subtitles,compositor,mp4,cli planned;
 ```
 
 Green is implemented today; blue is planned. The `VoiceEngine` interface
 and its Kokoro adapter exist under `app/audio/`. `ProjectConfig`,
 `ProjectAssetManager`, `CharacterConfig`, and `SceneConfig` provide the
-validated project/asset boundary; script and render orchestration are still
-pending.
+validated project/asset boundary. The script parser and dialogue timeline now
+synthesize WAV files through `VoiceEngine` and use their measured durations;
+visual and final-output orchestration are still pending.
 
 ## Inputs and Persistent Project Model
 
@@ -243,16 +244,14 @@ output/
 
 ## Planned Delivery Slices
 
-1. **Script and dialogue model:** add script parsing, validation, and a
-   dialogue/scene timeline for the versioned example project.
-2. **Minimal vertical slice:** one static scene, one character, generated
+1. **Minimal vertical slice:** one static scene, one character, generated
    dialogue WAV, timed mouth animation, subtitles, and MP4 rendering.
-3. **Multi-scene production:** add multiple characters, props, transitions,
+2. **Multi-scene production:** add multiple characters, props, transitions,
    ambience, sound effects, and music mixing.
-4. **Release hardening:** CLI, dry-run/verbose modes, reproducibility,
+3. **Release hardening:** CLI, dry-run/verbose modes, reproducibility,
    logging, full test layers, documentation, CPU benchmark, and licensing
    review.
-5. **Optional AI helpers:** add only after the deterministic pipeline works
+4. **Optional AI helpers:** add only after the deterministic pipeline works
    independently.
 
 ## Completion Checks

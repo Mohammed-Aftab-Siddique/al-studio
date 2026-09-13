@@ -56,14 +56,14 @@ core pipeline.
 
 ### Script and Dialogue
 
-- [ ] Design and document a human-editable script format for scenes,
+- [x] Design and document a human-editable script format for scenes,
   dialogue, actions, ambience, and captions.
-- [ ] Parse and validate scripts into an internal timeline model.
-- [ ] Resolve dialogue speakers to configured characters and synthesize
+- [x] Parse and validate scripts into an internal timeline model.
+- [x] Resolve dialogue speakers to configured characters and synthesize
   their voice lines through `VoiceEngine`.
-- [ ] Measure generated audio durations and construct deterministic dialogue
+- [x] Measure generated audio durations and construct deterministic dialogue
   timing.
-- [ ] Add parser, validation, and timeline tests with fixture projects.
+- [x] Add parser, validation, and timeline tests with fixture projects.
 
 ### 2D Animation and Scenes
 
@@ -128,15 +128,13 @@ core pipeline.
 
 ## Recommended Execution Order
 
-1. Implement the script parser and dialogue timeline, then connect it to
-   real voice synthesis.
-2. Deliver a minimal vertical slice: one static scene, one character,
+1. Deliver a minimal vertical slice: one static scene, one character,
    spoken dialogue, simple mouth animation, captions, and an MP4.
-3. Expand the vertical slice to multiple characters, scenes, props,
+2. Expand the vertical slice to multiple characters, scenes, props,
    ambience, sound effects, and transitions.
-4. Harden the pipeline and CLI, then complete documentation, test coverage,
+3. Harden the pipeline and CLI, then complete documentation, test coverage,
    benchmarks, and release checks.
-5. Add optional AI assistance only after the deterministic render path is
+4. Add optional AI assistance only after the deterministic render path is
    useful on its own.
 
 ## Near-Term Milestone

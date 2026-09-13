@@ -15,3 +15,7 @@ The example demonstrates:
 The project/asset model is loaded with `ProjectAssetManager(asset_root)` and
 validated through `ProjectConfig.from_dict()` or `load_project()`. Scripts and
 rendering are deliberately not part of this example yet.
+
+`script.json` is the matching schema-version 1 dialogue script. It is parsed
+by `app.script.load_script()` and can build a voice-backed timeline, but frame
+rendering, subtitles, audio mixing, and MP4 output remain future stages.
