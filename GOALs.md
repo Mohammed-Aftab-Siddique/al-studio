@@ -37,9 +37,9 @@ core pipeline.
 - [x] Add and pass an integration test that performs real synthesis.
 - [x] Add character voice configuration that persists a voice ID without
   exposing Kokoro details to the character model.
-- [ ] Add input validation and useful errors for invalid text, voice IDs,
+- [x] Add input validation and useful errors for invalid text, voice IDs,
   output paths, and synthesis failures.
-- [ ] Add fast unit tests with a fake voice engine, keeping real Kokoro
+- [x] Add fast unit tests with a fake voice engine, keeping real Kokoro
   synthesis as a slower integration test.
 
 ### Project, Character, and Asset Model
@@ -128,18 +128,17 @@ core pipeline.
 
 ## Recommended Execution Order
 
-1. Add Voice Engine input validation and fast fake-engine unit tests.
-2. Define the project/character/scene schemas and create one example
+1. Define the project/character/scene schemas and create one example
    project.
-3. Implement the script parser and dialogue timeline, then connect it to
+2. Implement the script parser and dialogue timeline, then connect it to
    real voice synthesis.
-4. Deliver a minimal vertical slice: one static scene, one character,
+3. Deliver a minimal vertical slice: one static scene, one character,
    spoken dialogue, simple mouth animation, captions, and an MP4.
-5. Expand the vertical slice to multiple characters, scenes, props,
+4. Expand the vertical slice to multiple characters, scenes, props,
    ambience, sound effects, and transitions.
-6. Harden the pipeline and CLI, then complete documentation, test coverage,
+5. Harden the pipeline and CLI, then complete documentation, test coverage,
    benchmarks, and release checks.
-7. Add optional AI assistance only after the deterministic render path is
+6. Add optional AI assistance only after the deterministic render path is
    useful on its own.
 
 ## Near-Term Milestone

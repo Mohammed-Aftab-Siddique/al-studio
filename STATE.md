@@ -36,6 +36,9 @@ Implemented and verified:
 - A provider-neutral `CharacterConfig` model that persists a character name
   and voice ID, validates both values, and does not import Kokoro.
 - Nine fast unit tests for character configuration validation.
+- Provider-neutral validation for synthesis text, voice IDs, and output
+  paths, plus a contextual `VoiceSynthesisError` for provider failures.
+- Ten fast voice-engine tests that use an injected fake Kokoro pipeline.
 
 Not implemented yet:
 
@@ -71,6 +74,6 @@ configuration warning), rather than AL Studio code.
 
 ## Immediate Next Step
 
-Add Voice Engine validation and fast unit tests using a fake provider. This
-will make invalid text, voice IDs, output paths, and provider failures easier
-to diagnose before the project and script layers begin using the engine.
+Define versioned project, character, scene, and asset schemas, then create a
+small example project. This will make the current character and voice
+components usable through a validated project configuration.

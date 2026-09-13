@@ -170,6 +170,12 @@ provider-neutral boundary. `KokoroVoiceEngine` currently creates a CPU
 `KPipeline`, writes mono PCM-16 WAV output at 24 kHz, creates the parent
 output directory, and returns the output path.
 
+The voice boundary rejects empty or non-string text/voice IDs and invalid
+output paths before calling a provider. The Kokoro adapter requires a `.wav`
+path and wraps provider or audio-writing failures in `VoiceSynthesisError`.
+An injected pipeline is supported for fast unit tests; production continues
+to construct the real Kokoro pipeline by default.
+
 The next character layer should hold a stable logical `voice_id` value,
 such as `am_adam`. The character system passes that value to `VoiceEngine`;
 it must not import or configure `KokoroVoiceEngine` directly.
@@ -236,19 +242,16 @@ output/
 
 ## Planned Delivery Slices
 
-1. **Voice-engine hardening:** add input validation and fast fake-engine
-   unit tests; the validated character definition with persistent voice IDs
-   is complete.
-2. **Project and script model:** add a versioned example project, schema
+1. **Project and script model:** add a versioned example project, schema
    validation, script parsing, and a dialogue timeline.
-3. **Minimal vertical slice:** one static scene, one character, generated
+2. **Minimal vertical slice:** one static scene, one character, generated
    dialogue WAV, timed mouth animation, subtitles, and MP4 rendering.
-4. **Multi-scene production:** add multiple characters, props, transitions,
+3. **Multi-scene production:** add multiple characters, props, transitions,
    ambience, sound effects, and music mixing.
-5. **Release hardening:** CLI, dry-run/verbose modes, reproducibility,
+4. **Release hardening:** CLI, dry-run/verbose modes, reproducibility,
    logging, full test layers, documentation, CPU benchmark, and licensing
    review.
-6. **Optional AI helpers:** add only after the deterministic pipeline works
+5. **Optional AI helpers:** add only after the deterministic pipeline works
    independently.
 
 ## Completion Checks

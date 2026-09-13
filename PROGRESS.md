@@ -152,8 +152,8 @@ discussed and committed.
   12      AI enhancements                        Planned
 
 Current position: **Phase 2**. The Voice Engine abstraction, integration
-test, and character voice configuration are complete. Voice-engine input
-validation and fake-engine unit tests are next.
+test, character voice configuration, validation, and fake-engine unit tests
+are complete. Versioned project configuration is next.
 
 # Phase 0 --- Hardware and Environment
 
@@ -767,11 +767,31 @@ Created `tests/test_character_config.py`. Verification result:
 9 passed
 ```
 
-# Next Planned Step --- 2.5 Voice Engine Validation and Fast Unit Tests
+# 2.5 --- Voice Engine Validation and Fast Unit Tests
 
-Add clear validation and failure behavior to the voice layer, then cover it
-with fast fake-provider unit tests. This complements the slower real Kokoro
-integration test before project and script orchestration begin.
+`VoiceEngine` now rejects empty/non-string text and voice values, invalid
+output-path types, fileless paths, and existing directory paths. The Kokoro
+adapter additionally requires a `.wav` output path and converts provider or
+audio-writing failures into `VoiceSynthesisError` with the voice and output
+path in the error message.
+
+`KokoroVoiceEngine` accepts an optional injected pipeline for fast tests.
+`tests/test_voice_engine_validation.py` uses a fake pipeline to cover a
+successful write, invalid requests before a provider call, invalid output
+extensions, and wrapped provider failures.
+
+Verification result:
+
+```text
+.venv/bin/python -m pytest tests/test_voice_engine_validation.py tests/test_voice_engine.py -v
+11 passed, 5 warnings
+```
+
+# Next Planned Step --- 3.1 Versioned Project Configuration
+
+Define versioned project, character, scene, and asset schemas and use them in
+a small example project. This will provide the validated configuration layer
+needed before scripts can orchestrate character dialogue and rendering.
 
 # Working Principles Going Forward
 
