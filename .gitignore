@@ -50,6 +50,12 @@ dist/
 GOALS.md
 STATE.md
 PROGRESS.md
+BENCHMARK.md
+TESTING.md
+
+# Local render inputs and reusable assets
+projects/
+assets/
 
 # OS
 .DS_Store
