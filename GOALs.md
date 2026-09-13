@@ -67,15 +67,15 @@ core pipeline.
 
 ### 2D Animation and Scenes
 
-- [ ] Choose and document the initial render representation and libraries
+- [x] Choose and document the initial render representation and libraries
   for 2D assets, transforms, and frame generation.
-- [ ] Implement reusable character rig/state primitives: position, scale,
+- [x] Implement reusable character rig/state primitives: position, scale,
   facing direction, visibility, expressions, and simple poses.
-- [ ] Implement deterministic dialogue animation, beginning with timed mouth
+- [x] Implement deterministic dialogue animation, beginning with timed mouth
   movement and optional idle motion.
-- [ ] Implement scene backgrounds, props, camera framing, and timeline-based
+- [x] Implement scene backgrounds, props, camera framing, and timeline-based
   transitions.
-- [ ] Add frame-level regression tests for core animation and scene behavior.
+- [x] Add frame-level regression tests for core animation and scene behavior.
 
 ### Audio, Captions, and Video Output
 

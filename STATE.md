@@ -20,7 +20,7 @@ tool, not the foundation of the animation pipeline.
 
 The repository has completed the **Voice Engine**, **Project/Asset Model**,
 and **Script and Dialogue** milestones. Deterministic scene and animation
-rendering is next.
+rendering is complete; final audio/video composition is next.
 
 Implemented and verified:
 
@@ -54,10 +54,11 @@ Implemented and verified:
 - Script validation and a deterministic timeline builder that resolves
   project characters, synthesizes dialogue through `VoiceEngine`, measures
   WAV duration, and emits timestamped events.
+- A dependency-free SVG frame renderer with reusable scene/prop/character
+  assets, camera transforms, character rig state, and timed mouth animation.
 
 Not implemented yet:
 
-- 2D animation and scene rendering.
 - Scene, audio-mixing, subtitle, compositor/video, CLI, and automation
   systems.
 
@@ -88,6 +89,5 @@ configuration warning), rather than AL Studio code.
 
 ## Immediate Next Step
 
-Implement deterministic 2D scene and character rendering, beginning with the
-starter background, Alex asset, and dialogue-timed mouth animation. This is
-the visual half of the first end-to-end MP4 vertical slice.
+Implement the audio timeline, subtitles, and FFmpeg composition needed to
+combine the generated dialogue and SVG frame sequence into the first MP4.

@@ -153,7 +153,8 @@ discussed and committed.
 
 Current position: **Script and Dialogue complete**. The Voice Engine,
 Project/Asset Model, and Script/Dialogue milestones are complete.
-Deterministic 2D rendering is next.
+Deterministic SVG scene and animation rendering is complete. Audio/video
+composition is next.
 
 # Phase 0 --- Hardware and Environment
 
@@ -829,8 +830,15 @@ Verification result:
 
 # Next Planned Step --- Deterministic 2D Animation and Scene Rendering
 
-Render the starter scene and character as deterministic frames, with simple
-dialogue-timed mouth animation. This begins the visual path to a full MP4.
+Implemented `FrameRenderer` with self-contained SVG frames, reusable asset
+composition, camera transforms, character rig state, frame sequences, and
+dialogue-timed mouth animation. Frame-level tests verify asset composition,
+mouth timing, rig validation, and sequence length.
+
+# Next Planned Step --- Audio, Captions, and Video Output
+
+Mix dialogue with future ambience/SFX, generate subtitles, and compose SVG
+frames plus audio into MP4 through FFmpeg.
 
 # Working Principles Going Forward
 
