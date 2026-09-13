@@ -33,6 +33,23 @@ output/*
 .cache/
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+coverage.xml
+htmlcov/
+
+# Build and local tooling
+build/
+dist/
+*.log
+.idea/
+.vscode/
+
+# Private local planning notes
+GOALS.md
+STATE.md
+PROGRESS.md
 
 # OS
 .DS_Store
