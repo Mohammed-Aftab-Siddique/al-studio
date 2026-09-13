@@ -79,27 +79,27 @@ core pipeline.
 
 ### Audio, Captions, and Video Output
 
-- [ ] Implement an audio timeline that aligns dialogue, ambience, sound
+- [x] Implement an audio timeline that aligns dialogue, ambience, sound
   effects, and optional music.
-- [ ] Normalize/mix audio with predictable levels and export a final track.
-- [ ] Generate time-aligned subtitles from dialogue and support at least one
+- [x] Normalize/mix audio with predictable levels and export a final track.
+- [x] Generate time-aligned subtitles from dialogue and support at least one
   standard subtitle output (for example, SRT).
-- [ ] Composite animation frames, mixed audio, and optional burned-in
+- [x] Composite animation frames, mixed audio, and optional burned-in
   subtitles into MP4 through FFmpeg.
-- [ ] Verify output duration, stream presence, and subtitle/timing behavior
+- [x] Verify output duration, stream presence, and subtitle/timing behavior
   with automated integration tests.
 
 ### Pipeline, CLI, and Reliability
 
-- [ ] Implement an orchestrating pipeline with explicit stages, structured
+- [x] Implement an orchestrating pipeline with explicit stages, structured
   errors, and a predictable output directory per render.
-- [ ] Build a CLI for project validation, asset inspection, voice preview,
+- [x] Build a CLI for project validation, asset inspection, voice preview,
   and rendering.
-- [ ] Add dry-run and verbose modes that explain planned work without
+- [x] Add dry-run and verbose modes that explain planned work without
   producing final media.
-- [ ] Make reruns deterministic where inputs and settings are unchanged;
+- [x] Make reruns deterministic where inputs and settings are unchanged;
   document any deliberate nondeterminism.
-- [ ] Add logging, render metadata, and failure recovery guidance.
+- [x] Add logging, render metadata, and failure recovery guidance.
 
 ### Quality and Release Readiness
 
