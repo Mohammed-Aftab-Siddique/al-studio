@@ -1,9 +1,9 @@
 # AL Studio — Low-Level Design
 
 > Pipeline design aligned with `GOALs.md`. Status reflects the repository on
-> 2026-09-13: the voice-engine abstraction and provider-neutral character
-> voice configuration are implemented; all other pipeline components
-> described below are planned.
+> 2026-09-13: the voice engine, versioned project configuration, character
+> configuration, and safe asset resolution are implemented; all other
+> pipeline components described below are planned.
 
 ## Design Principles
 
@@ -69,14 +69,15 @@ flowchart TD
 
     classDef implemented fill:#c8e6c9,stroke:#2e7d32,color:#1b5e20;
     classDef planned fill:#e3f2fd,stroke:#1565c0,color:#0d47a1;
-    class kokoro implemented;
-    class input,validate,manager,schema,script,timeline,character,voice,audioLines,scene,animation,frames,audio,mix,captions,subtitles,compositor,mp4,cli planned;
+    class kokoro,validate,manager,schema,character implemented;
+    class input,script,timeline,voice,audioLines,scene,animation,frames,audio,mix,captions,subtitles,compositor,mp4,cli planned;
 ```
 
 Green is implemented today; blue is planned. The `VoiceEngine` interface
-and its Kokoro adapter exist under `app/audio/`. `CharacterConfig` now
-stores a validated, provider-neutral voice ID, while configuration loading
-and orchestration are still pending.
+and its Kokoro adapter exist under `app/audio/`. `ProjectConfig`,
+`ProjectAssetManager`, `CharacterConfig`, and `SceneConfig` provide the
+validated project/asset boundary; script and render orchestration are still
+pending.
 
 ## Inputs and Persistent Project Model
 
@@ -242,8 +243,8 @@ output/
 
 ## Planned Delivery Slices
 
-1. **Project and script model:** add a versioned example project, schema
-   validation, script parsing, and a dialogue timeline.
+1. **Script and dialogue model:** add script parsing, validation, and a
+   dialogue/scene timeline for the versioned example project.
 2. **Minimal vertical slice:** one static scene, one character, generated
    dialogue WAV, timed mouth animation, subtitles, and MP4 rendering.
 3. **Multi-scene production:** add multiple characters, props, transitions,

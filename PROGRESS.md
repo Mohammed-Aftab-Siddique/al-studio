@@ -151,9 +151,9 @@ discussed and committed.
   11      Character consistency                  Planned
   12      AI enhancements                        Planned
 
-Current position: **Phase 2**. The Voice Engine abstraction, integration
-test, character voice configuration, validation, and fake-engine unit tests
-are complete. Versioned project configuration is next.
+Current position: **Phase 3**. The Voice Engine and Project, Character, and
+Asset Model milestones are complete. Script parsing and dialogue timing are
+next.
 
 # Phase 0 --- Hardware and Environment
 
@@ -787,11 +787,30 @@ Verification result:
 11 passed, 5 warnings
 ```
 
-# Next Planned Step --- 3.1 Versioned Project Configuration
+# 3.1 --- Versioned Project, Character, and Asset Model
 
-Define versioned project, character, scene, and asset schemas and use them in
-a small example project. This will provide the validated configuration layer
-needed before scripts can orchestrate character dialogue and rendering.
+Implemented `app/project.py` with schema-version 1 project configuration,
+legacy version-0 upgrades, render defaults, reusable asset definitions, and
+safe asset resolution. Assets must be relative to the configured asset root;
+missing files and incompatible file types produce clear errors.
+
+Expanded `CharacterConfig` with optional visual asset references and
+deterministic animation defaults. Added `SceneConfig` and `CameraConfig`.
+
+Created reusable SVG starter assets under `assets/` and a validated example
+configuration at `projects/starter-project/project.json`.
+
+Verification result:
+
+```text
+.venv/bin/python -m pytest tests/test_character_config.py tests/test_project_model.py -v
+18 passed
+```
+
+# Next Planned Step --- Script Format and Dialogue Timeline
+
+Design a human-editable script format, parse it into a validated timeline,
+and connect dialogue speakers to the configured characters and voice engine.
 
 # Working Principles Going Forward
 

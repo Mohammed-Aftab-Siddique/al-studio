@@ -18,7 +18,8 @@ tool, not the foundation of the animation pipeline.
 
 ## Implementation Status
 
-The repository is currently in **Phase 2: Voice Engine**.
+The repository has completed the **Voice Engine** and **Project, Character,
+and Asset Model** milestones. Script and dialogue orchestration is next.
 
 Implemented and verified:
 
@@ -39,11 +40,19 @@ Implemented and verified:
 - Provider-neutral validation for synthesis text, voice IDs, and output
   paths, plus a contextual `VoiceSynthesisError` for provider failures.
 - Ten fast voice-engine tests that use an injected fake Kokoro pipeline.
+- Versioned project, character, scene, render, and asset models with safe
+  defaults, validation, and schema-version 0-to-1 compatibility upgrades.
+- A project/asset manager that loads JSON, resolves only asset-root-relative
+  files, and reports missing or incompatible assets clearly.
+- Reusable starter character, scene, and prop SVG assets plus a validated
+  example project at `projects/starter-project/project.json`.
+- Project-model tests for schema validation, asset resolution, and backwards
+  compatibility.
 
 Not implemented yet:
 
 - Script format and dialogue orchestration.
-- Character assets and 2D animation.
+- 2D animation and scene rendering.
 - Scene, audio-mixing, subtitle, compositor/video, CLI, and automation
   systems.
 
@@ -74,6 +83,6 @@ configuration warning), rather than AL Studio code.
 
 ## Immediate Next Step
 
-Define versioned project, character, scene, and asset schemas, then create a
-small example project. This will make the current character and voice
-components usable through a validated project configuration.
+Design a human-editable script format and parse it into a validated dialogue
+and scene timeline. This will connect the example project’s characters and
+voice IDs to actual dialogue synthesis.

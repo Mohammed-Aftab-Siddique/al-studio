@@ -44,14 +44,14 @@ core pipeline.
 
 ### Project, Character, and Asset Model
 
-- [ ] Define versioned project, character, scene, and asset configuration
+- [x] Define versioned project, character, scene, and asset configuration
   schemas (including defaults and validation).
-- [ ] Implement character definitions: name, visual asset references,
+- [x] Implement character definitions: name, visual asset references,
   voice configuration, and animation parameters.
-- [ ] Implement a project/asset manager that resolves files safely and
+- [x] Implement a project/asset manager that resolves files safely and
   reports missing or incompatible assets clearly.
-- [ ] Provide a small reusable starter asset set and example project.
-- [ ] Add tests for schema validation, asset resolution, and backwards
+- [x] Provide a small reusable starter asset set and example project.
+- [x] Add tests for schema validation, asset resolution, and backwards
   compatibility rules.
 
 ### Script and Dialogue
@@ -128,17 +128,15 @@ core pipeline.
 
 ## Recommended Execution Order
 
-1. Define the project/character/scene schemas and create one example
-   project.
-2. Implement the script parser and dialogue timeline, then connect it to
+1. Implement the script parser and dialogue timeline, then connect it to
    real voice synthesis.
-3. Deliver a minimal vertical slice: one static scene, one character,
+2. Deliver a minimal vertical slice: one static scene, one character,
    spoken dialogue, simple mouth animation, captions, and an MP4.
-4. Expand the vertical slice to multiple characters, scenes, props,
+3. Expand the vertical slice to multiple characters, scenes, props,
    ambience, sound effects, and transitions.
-5. Harden the pipeline and CLI, then complete documentation, test coverage,
+4. Harden the pipeline and CLI, then complete documentation, test coverage,
    benchmarks, and release checks.
-6. Add optional AI assistance only after the deterministic render path is
+5. Add optional AI assistance only after the deterministic render path is
    useful on its own.
 
 ## Near-Term Milestone

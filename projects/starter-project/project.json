@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "name": "starter-project",
+  "assets": [
+    {"id": "alex-visual", "kind": "character", "path": "characters/alex.svg"},
+    {"id": "starter-room", "kind": "scene", "path": "scenes/starter-room.svg"},
+    {"id": "plant", "kind": "prop", "path": "props/plant.svg"}
+  ],
+  "characters": [
+    {
+      "name": "Alex",
+      "voice_id": "am_adam",
+      "visual_asset_id": "alex-visual",
+      "animation": {"idle_motion": true, "mouth_style": "simple"}
+    }
+  ],
+  "scenes": [
+    {
+      "id": "starter-room",
+      "background_asset_id": "starter-room",
+      "prop_asset_ids": ["plant"],
+      "camera": {"x": 0, "y": 0, "zoom": 1.0}
+    }
+  ],
+  "render": {"width": 1280, "height": 720, "fps": 24}
+}
