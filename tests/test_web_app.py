@@ -61,7 +61,7 @@ def test_web_shell_and_static_assets_are_available(tmp_path: Path) -> None:
     assert call(app, "GET", "/api/health").json() == {"status": "ready", "scope": "local-only"}
     home = call(app, "GET", "/")
     script = call(app, "GET", "/static/app.js")
-    assert "AL Studio" in home.text
+    assert "Al Studio" in home.text
     assert "block-list" in home.text
     assert "startRender" in script.text
 

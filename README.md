@@ -64,7 +64,14 @@ On the first real speech synthesis, Kokoro downloads its model files to the
 local Hugging Face cache. Keep the terminal connected to the internet for that
 first run; future runs normally use the cache.
 
-## Use the Browser App
+## Browser App
+
+The **Al Studio** browser workspace provides the same local rendering pipeline
+as the CLI through a guided visual interface. The CLI remains available for
+automation and advanced workflows; both interfaces read the same projects and
+assets and use the same render engine.
+
+### Launch the Browser App
 
 From the repository root, with the virtual environment active, run:
 
@@ -72,61 +79,122 @@ From the repository root, with the virtual environment active, run:
 al-studio-web
 ```
 
-AL Studio opens in your default browser at `http://127.0.0.1:8177`. It binds
-only to the loopback interface, so the workspace is not exposed to other
-computers on your network. If 8177 is occupied, the launcher tries ports
-8178–8187 in order and prints the selected address.
+Al Studio opens in your default browser at `http://127.0.0.1:8177`. Keep the
+terminal running while using the app and press `Ctrl+C` to stop it. Always
+launch from the repository root because that directory provides the local
+`projects/`, `assets/`, and `output/` workspace.
 
-Useful launcher options:
+### Create Your First Browser Project
+
+1. Select **Projects** in the sidebar.
+2. Select **New project**, enter a descriptive project name, and choose
+   **Create project**.
+3. The new project opens automatically and is also added to the **Current
+   project** selector at the top of every workspace view.
+
+Project creation writes `projects/<project-slug>/project.json` and
+`projects/<project-slug>/script.json`. It also creates a valid opening scene,
+a `Narrator` using the `af_heart` voice, and a neutral starter background, so
+the new project can be edited, validated, and rendered immediately.
+
+To resume existing work, select its card on **Projects** or choose it from the
+**Current project** selector. Use **Refresh** if files were added or changed
+outside the browser while the app was running.
+
+### Import Assets in the Browser
+
+1. Open **Assets**.
+2. Choose a category: character image, scene background, prop image, sound
+   effect, or music.
+3. Choose a local file and select **Import asset**.
+
+Visual categories accept SVG, PNG, and WebP. Audio categories accept WAV, MP3,
+and OGG. Imports are limited to 50 MB, duplicate filenames are rejected, and
+every destination is confined to the matching directory beneath `assets/`.
+The asset library shows the stored relative path and file size after import.
+
+Importing adds a reusable file to the library but does not silently alter an
+existing project's configuration. To assign new visuals to characters or
+scenes, update that project's `project.json` using the format documented in
+the CLI-oriented sections below, save it, and reopen the project in Al Studio.
+
+### Write a Story in the Browser
+
+Open **Script** after selecting a project. The editor displays one tab for
+each configured scene and one block for each event in the selected scene.
+
+- A **Dialogue** block provides speaker, spoken text, and caption fields.
+  Dialogue timing is calculated later from the generated voice audio.
+- An **Action** block provides an action description and a positive duration.
+- A **Caption** block provides on-screen text and a positive duration.
+
+Use **＋ Dialogue**, **＋ Action**, or **＋ Caption** to add blocks. The `↑` and
+`↓` controls change event order and `×` deletes a block. Choose **Save script**
+when finished; the server validates the script schema before replacing the
+project's `script.json`.
+
+### Preview a Voice in the Browser
+
+1. Open **Voice lab**.
+2. Enter a Kokoro voice ID such as `af_heart` or `am_adam`.
+3. Enter a short sample line and choose **Generate preview**.
+
+The first preview may take longer while Kokoro initializes or downloads its
+model. When synthesis completes, the WAV is loaded into the page's audio
+player and a **Download WAV** link appears. Preview files are stored in
+`output/web/previews/`.
+
+### Validate and Render in the Browser
+
+Open **Render** and use the controls in this order:
+
+1. **Validate project** checks the project schema, script schema, scene and
+   speaker references, supported asset types, and missing asset files.
+2. **Run dry-run** executes preflight and writes metadata without loading TTS
+   or creating final media.
+3. **Render MP4** runs dialogue synthesis, frame rendering, audio mixing,
+   caption writing, and MP4 composition.
+
+The Current Job panel reports the active stage and percentage. Pipeline
+failures appear in the same panel with their error message. Rendering runs as
+a background job, so the browser remains responsive while the terminal-hosted
+process does the work.
+
+### Find Browser Rendered Output
+
+Every browser job receives its own local directory:
+
+```text
+output/web/<project-slug>/<render-id>/
+├── metadata.json
+├── dialogue/*.wav
+├── frames/*.svg
+├── audio/mix.wav
+├── subtitles/captions.srt
+└── final/<project-name>.mp4
+```
+
+After completion, the Render view displays all supported artifacts. MP4 and
+WAV files can be played in the page; MP4, WAV, SRT, and JSON metadata have
+open/download links. Browser output and voice previews are Git-ignored.
+
+### Browser Options, Security, and Troubleshooting
 
 ```bash
 al-studio-web --no-browser       # start without opening a browser tab
 al-studio-web --port 9123        # require a specific local port
 ```
 
-Keep the terminal running while you use the app; press `Ctrl+C` there to stop
-it. Always launch from the repository root because that directory contains
-the app's local `projects/`, `assets/`, and `output/` workspace.
-
-### Create and edit a story
-
-1. Open **Projects**, choose **New project**, enter a title, and select
-   **Create project**. The app creates a valid starter project with an opening
-   scene, a narrator using `af_heart`, and a neutral SVG background.
-2. In **Script**, edit the dialogue text, speaker, or caption directly in its
-   block. Add dialogue, timed action, or timed caption blocks with the buttons
-   below the scene. Use the arrow buttons to reorder blocks and `×` to remove
-   one, then select **Save script**.
-3. In **Voice lab**, enter a Kokoro voice ID and a short line, then select
-   **Generate preview**. The resulting WAV appears in the page's audio player
-   and can also be downloaded.
-4. In **Render**, select **Validate project**. Once preflight succeeds, use
-   **Run dry-run** to verify the planned work without TTS or final media, or
-   **Render MP4** for the complete pipeline.
-5. The Render desk displays the current pipeline stage, percentage, errors,
-   and finished artifacts. MP4 and WAV files play in the page; MP4, WAV, SRT,
-   and metadata files have open/download links.
-
-### Import local assets
-
-Open **Assets**, select the asset category, choose a supported file, and
-select **Import asset**. Visual categories accept SVG, PNG, and WebP; audio
-categories accept WAV, MP3, and OGG. Imports are limited to 50 MB, duplicate
-names are rejected, and the server confines every destination to a category
-inside `assets/`.
-
-An import adds the file to the reusable library; it does not silently rewrite
-an existing project's asset references. To replace or expand the starter
-project's scene/character configuration, edit its `project.json` using the
-format documented below, then reopen the project in the browser.
-
-Browser renders are stored under
-`output/web/<project-slug>/<render-id>/`. Voice previews are stored under
-`output/web/previews/`. Both directories are Git-ignored.
+The app binds only to `127.0.0.1`, so it is not exposed to other computers on
+your network. If port 8177 is occupied, the default launcher tries ports
+8178–8187 and prints the selected address. When using `--port`, the requested
+port must be available.
 
 If the page cannot connect, confirm the launcher terminal is still running
-and use the exact address it printed. If the requested port is occupied,
-omit `--port` to enable fallback selection or choose another unused port.
+and open the exact address printed there. If validation fails, correct the
+reported project, script, speaker, scene, or asset problem and run validation
+again. If rendering fails, keep its output directory for diagnosis and review
+the error shown in the Current Job panel.
 
 ## Where Your Files Go
 
