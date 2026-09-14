@@ -31,6 +31,9 @@ class CharacterState:
             raise TypeError("character visible must be a boolean")
 
 
+DEFAULT_CHARACTER_STATE = CharacterState()
+
+
 @dataclass(frozen=True, slots=True)
 class RenderedFrame:
     path: Path
@@ -53,7 +56,7 @@ class FrameRenderer:
         timeline: tuple[TimelineEvent, ...],
         time_seconds: float,
         output_path: Path,
-        character_state: CharacterState = CharacterState(),
+        character_state: CharacterState = DEFAULT_CHARACTER_STATE,
     ) -> RenderedFrame:
         event = self._event_at(timeline, time_seconds)
         scene = self.scenes[event.scene_id]
@@ -125,7 +128,10 @@ class FrameRenderer:
             'stroke-linecap="round" data-mouth="closed"/>'
         )
         transform = f"translate({state.x} {state.y}) scale({scale_x} {state.scale})"
-        return f'<g transform="{transform}" data-expression="{escape(state.expression)}">{image}{mouth}</g>', mouth_open
+        return (
+            f'<g transform="{transform}" data-expression="{escape(state.expression)}">{image}{mouth}</g>',
+            mouth_open,
+        )
 
     @staticmethod
     def _image(path: Path, x: float, y: float, width: float, height: float) -> str:

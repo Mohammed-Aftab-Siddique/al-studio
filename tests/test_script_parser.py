@@ -5,7 +5,6 @@ import pytest
 from app.script import DialogueEvent, ScriptConfigError, ScriptEvent, load_script
 from app.script.parser import parse_script
 
-
 SCRIPT_PATH = Path("projects/starter-project/script.json")
 
 
@@ -25,11 +24,19 @@ def test_starter_script_loads_documented_event_types() -> None:
         ({"schema_version": 2, "scenes": []}, "unsupported script schema version: 2"),
         ({"schema_version": 1, "scenes": "no"}, "scenes must be a list"),
         (
-            {"schema_version": 1, "scenes": [{"scene_id": "room", "events": [{"type": "unknown"}]}]},
+            {
+                "schema_version": 1,
+                "scenes": [{"scene_id": "room", "events": [{"type": "unknown"}]}],
+            },
             "unsupported event type: unknown",
         ),
         (
-            {"schema_version": 1, "scenes": [{"scene_id": "room", "events": [{"type": "action", "duration_seconds": 0}]}]},
+            {
+                "schema_version": 1,
+                "scenes": [
+                    {"scene_id": "room", "events": [{"type": "action", "duration_seconds": 0}]}
+                ],
+            },
             "duration_seconds must be a positive number",
         ),
     ],

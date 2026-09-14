@@ -52,7 +52,9 @@ class DialogueTimelineBuilder:
                 if isinstance(event, DialogueEvent):
                     character = characters.get(event.speaker)
                     if character is None:
-                        raise ProjectConfigError(f"script references unknown speaker: {event.speaker}")
+                        raise ProjectConfigError(
+                            f"script references unknown speaker: {event.speaker}"
+                        )
                     output_path = output_dir / "dialogue" / f"{event_id}.wav"
                     self.voice_engine.synthesize(event.text, character.voice_id, output_path)
                     duration = float(sf.info(output_path).duration)
@@ -73,7 +75,9 @@ class DialogueTimelineBuilder:
                         payload=payload,
                     )
                 else:
-                    timeline_event = self._timed_event(event_id, scene.scene_id, current_time, event)
+                    timeline_event = self._timed_event(
+                        event_id, scene.scene_id, current_time, event
+                    )
                 timeline.append(timeline_event)
                 current_time += timeline_event.duration_seconds
         return tuple(timeline)

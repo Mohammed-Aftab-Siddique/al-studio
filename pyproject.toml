@@ -7,10 +7,20 @@ name = "al-studio"
 version = "0.1.0"
 description = "Script-driven 2D animation studio"
 requires-python = ">=3.12,<3.13"
-dependencies = ["kokoro>=0.9.4", "numpy", "soundfile"]
+dependencies = [
+  "fastapi>=0.115,<1",
+  "kokoro>=0.9.4",
+  "numpy",
+  "soundfile",
+  "uvicorn>=0.30,<1",
+]
+
+[project.optional-dependencies]
+dev = ["httpx>=0.28", "mypy", "pytest", "ruff"]
 
 [project.scripts]
 al-studio = "app.cli.main:main"
+al-studio-web = "app.web.launcher:main"
 
 [tool.pytest.ini_options]
 addopts = "-ra"
@@ -23,7 +33,11 @@ target-version = "py312"
 [tool.mypy]
 python_version = "3.12"
 check_untyped_defs = true
+ignore_missing_imports = true
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]
+
+[tool.setuptools.package-data]
+"app.web" = ["*.html", "static/*.css", "static/*.js"]

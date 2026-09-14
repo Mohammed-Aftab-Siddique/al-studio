@@ -10,7 +10,6 @@ from app.project import (
     ProjectConfigError,
 )
 
-
 ASSET_ROOT = Path("assets")
 EXAMPLE_PROJECT = Path("projects/starter-project/project.json")
 
@@ -59,7 +58,9 @@ def test_character_visual_reference_must_exist_and_match_its_kind() -> None:
                 "schema_version": 1,
                 "name": "invalid",
                 "assets": [],
-                "characters": [{"name": "Alex", "voice_id": "am_adam", "visual_asset_id": "missing"}],
+                "characters": [
+                    {"name": "Alex", "voice_id": "am_adam", "visual_asset_id": "missing"}
+                ],
                 "scenes": [],
             }
         )
@@ -97,7 +98,9 @@ def test_asset_manager_reports_incompatible_extensions_clearly(tmp_path: Path) -
     manager = ProjectAssetManager(tmp_path)
     asset = AssetConfig(asset_id="invalid", kind="character", path="characters/invalid.txt")
 
-    with pytest.raises(AssetResolutionError, match="incompatible extension .txt for kind character"):
+    with pytest.raises(
+        AssetResolutionError, match="incompatible extension .txt for kind character"
+    ):
         manager.resolve_asset(asset)
 
 

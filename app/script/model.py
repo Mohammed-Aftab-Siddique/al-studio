@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from typing import Any
 
-
 SCRIPT_SCHEMA_VERSION = 1
 EVENT_TYPES = frozenset({"dialogue", "action", "ambience", "sound_effect", "caption"})
 

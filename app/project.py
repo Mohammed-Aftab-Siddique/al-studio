@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from app.characters import AnimationConfig, CharacterConfig
 from app.scenes import CameraConfig, SceneConfig
-
 
 CURRENT_SCHEMA_VERSION = 1
 ASSET_KINDS = frozenset({"character", "scene", "prop", "audio", "music"})
@@ -39,7 +38,11 @@ class RenderSettings:
     fps: int = 24
 
     def __post_init__(self) -> None:
-        for field_name, value in (("width", self.width), ("height", self.height), ("fps", self.fps)):
+        for field_name, value in (
+            ("width", self.width),
+            ("height", self.height),
+            ("fps", self.fps),
+        ):
             if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
                 raise ProjectConfigError(f"render {field_name} must be a positive integer")
 
@@ -92,7 +95,9 @@ class ProjectConfig:
             raise ProjectConfigError(f"{label} identifiers must be unique")
 
     @staticmethod
-    def _validate_asset_reference(asset_id: str, expected_kind: str, assets: dict[str, AssetConfig]) -> None:
+    def _validate_asset_reference(
+        asset_id: str, expected_kind: str, assets: dict[str, AssetConfig]
+    ) -> None:
         asset = assets.get(asset_id)
         if asset is None:
             raise ProjectConfigError(f"unknown {expected_kind} asset: {asset_id}")
@@ -109,7 +114,9 @@ class ProjectConfig:
         return cls(
             name=_required_string(data, "name"),
             assets=tuple(cls._asset_from_dict(item) for item in cls._list(data, "assets")),
-            characters=tuple(cls._character_from_dict(item) for item in cls._list(data, "characters")),
+            characters=tuple(
+                cls._character_from_dict(item) for item in cls._list(data, "characters")
+            ),
             scenes=tuple(cls._scene_from_dict(item) for item in cls._list(data, "scenes")),
             render=cls._render_from_dict(data.get("render", {})),
         )
@@ -214,7 +221,9 @@ class ProjectAssetManager:
             raise AssetResolutionError(f"asset path escapes asset root: {asset.path}")
         if not candidate.is_file():
             raise AssetResolutionError(f"asset file not found: {asset.path}")
-        allowed_extensions = AUDIO_EXTENSIONS if asset.kind in {"audio", "music"} else IMAGE_EXTENSIONS
+        allowed_extensions = (
+            AUDIO_EXTENSIONS if asset.kind in {"audio", "music"} else IMAGE_EXTENSIONS
+        )
         if candidate.suffix.lower() not in allowed_extensions:
             raise AssetResolutionError(
                 f"asset {asset.asset_id} has incompatible extension {candidate.suffix or '<none>'} "

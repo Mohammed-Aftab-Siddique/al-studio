@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-from .model import DialogueEvent, SCRIPT_SCHEMA_VERSION, ScriptConfig, ScriptEvent, ScriptScene
+from .model import SCRIPT_SCHEMA_VERSION, DialogueEvent, ScriptConfig, ScriptEvent, ScriptScene
 
 
 class ScriptConfigError(ValueError):
@@ -44,7 +44,10 @@ def _parse_scene(raw: Any) -> ScriptScene:
     events = raw.get("events")
     if not isinstance(events, list):
         raise ScriptConfigError("scene events must be a list")
-    return ScriptScene(scene_id=raw.get("scene_id"), events=tuple(_parse_event(event) for event in events))
+    return ScriptScene(
+        scene_id=cast(str, raw.get("scene_id")),
+        events=tuple(_parse_event(event) for event in events),
+    )
 
 
 def _parse_event(raw: Any) -> DialogueEvent | ScriptEvent:
@@ -53,8 +56,8 @@ def _parse_event(raw: Any) -> DialogueEvent | ScriptEvent:
     event_type = raw.get("type")
     if event_type == "dialogue":
         return DialogueEvent(
-            speaker=raw.get("speaker"),
-            text=raw.get("text"),
+            speaker=cast(str, raw.get("speaker")),
+            text=cast(str, raw.get("text")),
             caption=raw.get("caption"),
         )
     if event_type not in {"action", "ambience", "sound_effect", "caption"}:
@@ -62,6 +65,6 @@ def _parse_event(raw: Any) -> DialogueEvent | ScriptEvent:
     payload = {key: value for key, value in raw.items() if key not in {"type", "duration_seconds"}}
     return ScriptEvent(
         event_type=event_type,
-        duration_seconds=raw.get("duration_seconds"),
+        duration_seconds=cast(float, raw.get("duration_seconds")),
         payload=payload,
     )

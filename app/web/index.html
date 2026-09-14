@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AL Studio</title><link rel="stylesheet" href="/static/app.css"><script defer src="/static/app.js"></script>
+</head>
+<body><div class="shell">
+  <aside class="sidebar">
+    <a class="brand" href="#projects"><span class="brand-mark">A</span><span>AL Studio<small>Local story engine</small></span></a>
+    <nav aria-label="Workspace">
+      <button class="nav-item active" data-view="projects"><span>▦</span> Projects</button>
+      <button class="nav-item" data-view="script"><span>✦</span> Script</button>
+      <button class="nav-item" data-view="assets"><span>◇</span> Assets</button>
+      <button class="nav-item" data-view="voice"><span>◖</span> Voice lab</button>
+      <button class="nav-item" data-view="render"><span>▷</span> Render</button>
+    </nav>
+    <div class="local-badge"><i></i><span>Runs on this computer<small>127.0.0.1 · private</small></span></div>
+  </aside>
+  <main>
+    <header class="topbar"><div><p class="eyebrow">WORKSPACE</p><h1 id="page-title">Projects</h1></div><label class="project-switcher"><span>Current project</span><select id="project-select"><option value="">Choose a project</option></select></label></header>
+    <section class="view active" id="view-projects">
+      <div class="hero panel"><div><p class="eyebrow accent">YOUR STORIES</p><h2>Build something worth watching.</h2><p>Create a project or continue exactly where you left off. Everything stays on your machine.</p></div><button class="primary" id="new-project">＋ New project</button></div>
+      <div class="section-heading"><div><h2>Recent projects</h2><p>Open a project to edit its script, voices, assets, and output.</p></div><button class="quiet" id="refresh-projects">↻ Refresh</button></div>
+      <div class="project-grid" id="project-grid"></div><div class="empty panel" id="project-empty"><span>✦</span><h3>Your first story starts here</h3><p>Create a project with a ready-to-edit opening scene.</p></div>
+    </section>
+    <section class="view" id="view-script">
+      <div class="section-heading"><div><p class="eyebrow accent">BLOCK EDITOR</p><h2>Shape the story, beat by beat.</h2><p>Dialogue, captions, and timed actions are saved to the project script.</p></div><button class="primary" id="save-script">Save script</button></div>
+      <div class="notice" id="script-notice">Choose a project to start writing.</div><div class="scene-tabs" id="scene-tabs"></div><div class="block-list" id="block-list"></div>
+      <div class="add-row" id="add-row"><button data-add="dialogue">＋ Dialogue</button><button data-add="action">＋ Action</button><button data-add="caption">＋ Caption</button></div>
+    </section>
+    <section class="view" id="view-assets">
+      <div class="section-heading"><div><p class="eyebrow accent">ASSET LIBRARY</p><h2>Bring your world together.</h2><p>Imports are copied safely beneath this workspace’s <code>assets/</code> folder.</p></div></div>
+      <div class="panel import-panel"><label>Asset category<select id="asset-category"><option value="characters">Character image</option><option value="scenes">Scene background</option><option value="props">Prop image</option><option value="audio">Sound effect</option><option value="music">Music</option></select></label><label class="file-drop" for="asset-file"><strong>Choose a local file</strong><span>PNG, SVG, WebP, WAV, MP3, or OGG · max 50 MB</span><input id="asset-file" type="file"></label><button class="primary" id="import-asset">Import asset</button></div>
+      <div class="asset-grid" id="asset-grid"></div>
+    </section>
+    <section class="view" id="view-voice">
+      <div class="section-heading"><div><p class="eyebrow accent">VOICE LAB</p><h2>Hear the character before you render.</h2><p>Generate a local WAV preview using the same voice engine as the final pipeline.</p></div></div>
+      <div class="voice-layout"><div class="panel form-stack"><label>Voice ID<input id="voice-id" value="af_heart" autocomplete="off"></label><label>Preview text<textarea id="voice-text" rows="6">Every great story begins with a single voice.</textarea></label><button class="primary" id="preview-voice">Generate preview</button></div><div class="panel player-card"><div class="record-art"><i></i></div><p class="eyebrow">PREVIEW OUTPUT</p><h3 id="voice-status">Ready when you are</h3><audio id="voice-player" controls></audio><a id="voice-download" class="quiet-link" download hidden>Download WAV</a></div></div>
+    </section>
+    <section class="view" id="view-render">
+      <div class="section-heading"><div><p class="eyebrow accent">RENDER DESK</p><h2>From script to finished film.</h2><p>Validate first, inspect a dry-run, then produce the final MP4.</p></div></div>
+      <div class="render-layout"><div class="panel checklist"><h3>Preflight</h3><div id="validation-result" class="status-line muted"><i></i>Not checked yet</div><button class="secondary" id="validate-project">Validate project</button><button class="secondary" id="dry-run">Run dry-run</button><button class="primary wide" id="start-render">▷ Render MP4</button></div><div class="panel progress-card"><div class="progress-head"><div><p class="eyebrow">CURRENT JOB</p><h3 id="render-stage">Waiting for a render</h3></div><strong id="render-percent">0%</strong></div><div class="progress-track"><i id="render-progress"></i></div><p id="render-message">Select a project and run validation to begin.</p><div id="render-error" class="error-box" hidden></div></div></div>
+      <div class="outputs" id="render-outputs"></div>
+    </section>
+  </main>
+</div>
+<dialog id="project-dialog"><form method="dialog" id="project-form"><button class="dialog-close" value="cancel" aria-label="Close">×</button><p class="eyebrow accent">NEW PROJECT</p><h2>Name your next story</h2><p>We’ll create an editable opening scene, narrator, and starter background.</p><label>Project name<input id="project-name" placeholder="Midnight at the station" required autofocus></label><div class="dialog-actions"><button class="quiet" value="cancel">Cancel</button><button class="primary" id="create-project" value="default">Create project</button></div></form></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"></div></body></html>

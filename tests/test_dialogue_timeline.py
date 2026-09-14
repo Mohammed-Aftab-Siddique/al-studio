@@ -23,7 +23,9 @@ class FakeVoiceEngine(VoiceEngine):
 
 
 def _starter_project():
-    return ProjectAssetManager(Path("assets")).load_project(Path("projects/starter-project/project.json"))
+    return ProjectAssetManager(Path("assets")).load_project(
+        Path("projects/starter-project/project.json")
+    )
 
 
 def test_timeline_synthesizes_dialogue_and_uses_measured_duration(tmp_path: Path) -> None:
@@ -46,7 +48,12 @@ def test_timeline_rejects_unknown_speaker_before_synthesis(tmp_path: Path) -> No
     script = parse_script(
         {
             "schema_version": 1,
-            "scenes": [{"scene_id": "starter-room", "events": [{"type": "dialogue", "speaker": "Missing", "text": "Hi"}]}],
+            "scenes": [
+                {
+                    "scene_id": "starter-room",
+                    "events": [{"type": "dialogue", "speaker": "Missing", "text": "Hi"}],
+                }
+            ],
         }
     )
     voice_engine = FakeVoiceEngine()
@@ -61,7 +68,12 @@ def test_timeline_rejects_unknown_scene_before_synthesis(tmp_path: Path) -> None
     script = parse_script(
         {
             "schema_version": 1,
-            "scenes": [{"scene_id": "missing", "events": [{"type": "dialogue", "speaker": "Alex", "text": "Hi"}]}],
+            "scenes": [
+                {
+                    "scene_id": "missing",
+                    "events": [{"type": "dialogue", "speaker": "Alex", "text": "Hi"}],
+                }
+            ],
         }
     )
 

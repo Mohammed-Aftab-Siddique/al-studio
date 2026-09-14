@@ -1,0 +1,1 @@
+"""AL Studio application package."""

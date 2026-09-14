@@ -3,7 +3,6 @@ from pathlib import Path
 import soundfile as sf
 from kokoro import KPipeline
 
-
 OUTPUT_DIR = Path("output/voice-tests")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 

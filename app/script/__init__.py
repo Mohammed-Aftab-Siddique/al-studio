@@ -1,7 +1,7 @@
 """Script parsing and deterministic dialogue timeline construction."""
 
 from .model import DialogueEvent, ScriptConfig, ScriptEvent, ScriptScene
-from .parser import ScriptConfigError, load_script
+from .parser import ScriptConfigError, load_script, parse_script
 from .timeline import DialogueTimelineBuilder, TimelineEvent
 
 __all__ = [
@@ -13,4 +13,5 @@ __all__ = [
     "ScriptScene",
     "TimelineEvent",
     "load_script",
+    "parse_script",
 ]

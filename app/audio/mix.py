@@ -1,7 +1,10 @@
 """FFmpeg-backed deterministic dialogue mixing."""
-from pathlib import Path
+
 import subprocess
+from pathlib import Path
+
 from app.script.timeline import TimelineEvent
+
 
 class AudioMixer:
     def mix(self, timeline: tuple[TimelineEvent, ...], output_path: Path) -> Path:
@@ -21,5 +24,19 @@ class AudioMixer:
         filters.append(f"{''.join(labels)}amix=inputs={len(labels)}:normalize=0[mixed]")
         filters.append("[mixed]loudnorm=I=-16:LRA=11:TP=-1.5[mix]")
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(command + ["-filter_complex", ";".join(filters), "-map", "[mix]", "-c:a", "pcm_s16le", str(output_path)], check=True, capture_output=True, text=True)
+        subprocess.run(
+            command
+            + [
+                "-filter_complex",
+                ";".join(filters),
+                "-map",
+                "[mix]",
+                "-c:a",
+                "pcm_s16le",
+                str(output_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
         return output_path

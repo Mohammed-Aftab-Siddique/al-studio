@@ -1,9 +1,8 @@
 # AL Studio — Low-Level Design
 
-> Pipeline design aligned with `GOALs.md`. Status reflects the repository on
-> 2026-09-13: the voice engine, project/asset model, script parser, and
-> dialogue timeline are implemented; the visual and final-output pipeline
-> components described below are planned.
+> Pipeline design aligned with `GOALS.md`. Status reflects the repository on
+> 2026-09-14: the deterministic render pipeline, CLI, and first local browser
+> milestone are implemented and tested.
 
 ## Design Principles
 
@@ -39,6 +38,8 @@ flowchart TD
     compositor[Compositor / Video Engine]
     mp4[Final MP4 + render metadata]
     cli[CLI / Automation]
+    web[Local Browser App]
+    api[Loopback API + background jobs]
 
     input --> validate
     validate --> manager
@@ -66,19 +67,46 @@ flowchart TD
     compositor --> mp4
     cli --> validate
     cli --> compositor
+    web --> api
+    api --> validate
+    api --> compositor
+    mp4 --> api
+    api --> web
 
     classDef implemented fill:#c8e6c9,stroke:#2e7d32,color:#1b5e20;
     classDef planned fill:#e3f2fd,stroke:#1565c0,color:#0d47a1;
-    class kokoro,validate,manager,schema,script,timeline,character,voice,audioLines implemented;
-    class input,scene,animation,frames,audio,mix,captions,subtitles,compositor,mp4,cli planned;
+    class kokoro,validate,manager,schema,script,timeline,character,voice,audioLines,input,scene,animation,frames,audio,mix,captions,subtitles,compositor,mp4,cli,web,api implemented;
 ```
 
-Green is implemented today; blue is planned. The `VoiceEngine` interface
-and its Kokoro adapter exist under `app/audio/`. `ProjectConfig`,
-`ProjectAssetManager`, `CharacterConfig`, and `SceneConfig` provide the
-validated project/asset boundary. The script parser and dialogue timeline now
-synthesize WAV files through `VoiceEngine` and use their measured durations;
-visual and final-output orchestration are still pending.
+Green is implemented today. The CLI and loopback browser API both call the
+same `RenderPipeline`; the web layer adds project/script persistence, guarded
+asset imports, background-job progress, and local media delivery without
+duplicating render-domain logic.
+
+## Browser Interaction Flow
+
+```mermaid
+flowchart LR
+    launch[al-studio-web] --> loopback[127.0.0.1<br/>port 8177–8187]
+    loopback --> projects[Create / open project]
+    projects --> editor[Block script editor]
+    projects --> library[Safe asset import]
+    projects --> preview[Playable voice preview]
+    editor --> save[Validated script save]
+    library --> assetRoot[assets/category/file]
+    preview --> previewWav[output/web/previews/*.wav]
+    save --> preflight[Project + script + asset validation]
+    preflight --> dryrun[Dry-run metadata]
+    preflight --> job[Background render job]
+    job --> stages[Stage + percent + errors]
+    stages --> results[MP4 / WAV / SRT / metadata]
+    results --> player[Embedded playback + downloads]
+```
+
+The HTTP layer accepts only project slugs and root-relative media paths.
+Asset imports sanitize filenames, enforce category-specific extensions and a
+50 MB limit, reject duplicates, and resolve every target beneath `assets/`.
+Generated media is served only from `output/`.
 
 ## Inputs and Persistent Project Model
 

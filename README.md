@@ -64,6 +64,70 @@ On the first real speech synthesis, Kokoro downloads its model files to the
 local Hugging Face cache. Keep the terminal connected to the internet for that
 first run; future runs normally use the cache.
 
+## Use the Browser App
+
+From the repository root, with the virtual environment active, run:
+
+```bash
+al-studio-web
+```
+
+AL Studio opens in your default browser at `http://127.0.0.1:8177`. It binds
+only to the loopback interface, so the workspace is not exposed to other
+computers on your network. If 8177 is occupied, the launcher tries ports
+8178–8187 in order and prints the selected address.
+
+Useful launcher options:
+
+```bash
+al-studio-web --no-browser       # start without opening a browser tab
+al-studio-web --port 9123        # require a specific local port
+```
+
+Keep the terminal running while you use the app; press `Ctrl+C` there to stop
+it. Always launch from the repository root because that directory contains
+the app's local `projects/`, `assets/`, and `output/` workspace.
+
+### Create and edit a story
+
+1. Open **Projects**, choose **New project**, enter a title, and select
+   **Create project**. The app creates a valid starter project with an opening
+   scene, a narrator using `af_heart`, and a neutral SVG background.
+2. In **Script**, edit the dialogue text, speaker, or caption directly in its
+   block. Add dialogue, timed action, or timed caption blocks with the buttons
+   below the scene. Use the arrow buttons to reorder blocks and `×` to remove
+   one, then select **Save script**.
+3. In **Voice lab**, enter a Kokoro voice ID and a short line, then select
+   **Generate preview**. The resulting WAV appears in the page's audio player
+   and can also be downloaded.
+4. In **Render**, select **Validate project**. Once preflight succeeds, use
+   **Run dry-run** to verify the planned work without TTS or final media, or
+   **Render MP4** for the complete pipeline.
+5. The Render desk displays the current pipeline stage, percentage, errors,
+   and finished artifacts. MP4 and WAV files play in the page; MP4, WAV, SRT,
+   and metadata files have open/download links.
+
+### Import local assets
+
+Open **Assets**, select the asset category, choose a supported file, and
+select **Import asset**. Visual categories accept SVG, PNG, and WebP; audio
+categories accept WAV, MP3, and OGG. Imports are limited to 50 MB, duplicate
+names are rejected, and the server confines every destination to a category
+inside `assets/`.
+
+An import adds the file to the reusable library; it does not silently rewrite
+an existing project's asset references. To replace or expand the starter
+project's scene/character configuration, edit its `project.json` using the
+format documented below, then reopen the project in the browser.
+
+Browser renders are stored under
+`output/web/<project-slug>/<render-id>/`. Voice previews are stored under
+`output/web/previews/`. Both directories are Git-ignored.
+
+If the page cannot connect, confirm the launcher terminal is still running
+and use the exact address it printed. If the requested port is occupied,
+omit `--port` to enable fallback selection or choose another unused port.
+
 ## Where Your Files Go
 
 The repository deliberately keeps private creative work out of Git:
@@ -261,7 +325,13 @@ Run tests with:
 ```
 
 For source checks in a development environment, install `ruff` and `mypy`,
-then run `ruff check app tests` and `mypy app`.
+then run:
+
+```bash
+ruff format --check app tests
+ruff check app tests
+mypy app
+```
 
 ## Current Limitations
 
