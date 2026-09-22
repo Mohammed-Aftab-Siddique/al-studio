@@ -1,9 +1,9 @@
 "use strict";
 
-const state = { projectName: "", project: null, script: null, scene: 0, jobTimer: null };
+const state = { projectName: "", project: null, script: null, scene: 0, composerScene: 0, selectedInstance: "", composerAssets: [], pointerDrag: null, jobTimer: null };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const titles = { projects: "Projects", script: "Script editor", assets: "Asset library", voice: "Voice lab", render: "Render desk" };
+const titles = { projects: "Projects", scene: "Scene composer", script: "Script editor", assets: "Asset library", voice: "Voice lab", render: "Render desk" };
 
 async function api(path, options = {}) {
   const response = await fetch(path, options);
@@ -32,6 +32,7 @@ function showView(name) {
   $("#page-title").textContent = titles[name];
   history.replaceState(null, "", `#${name}`);
   if (name === "assets") loadAssets();
+  if (name === "scene") { loadComposerAssets(); renderComposer(); }
 }
 
 async function loadProjects(selectName = state.projectName) {
@@ -51,8 +52,11 @@ async function openProject(name, destination = "script") {
     state.project = data.project;
     state.script = data.script;
     state.scene = 0;
+    state.composerScene = 0;
+    state.selectedInstance = "";
     $("#project-select").value = name;
     renderScript();
+    renderComposer();
     resetRender();
     showView(destination);
     toast(`Opened ${data.project.name}`);
@@ -73,6 +77,200 @@ async function createProject(event) {
     await openProject(result.name);
   } catch (error) { toast(error.message, true); }
   finally { button.disabled = false; }
+}
+
+function assetUrl(path) {
+  return `/asset-media/${path.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+function currentProjectScene() {
+  return state.project?.scenes?.[state.composerScene];
+}
+
+function uniqueId(base, existing) {
+  const clean = base.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "asset";
+  let candidate = clean;
+  let number = 2;
+  while (existing.has(candidate)) candidate = `${clean}-${number++}`;
+  return candidate;
+}
+
+function normalizeSceneInstances(scene) {
+  if (!scene) return;
+  scene.instances ||= [];
+  const ids = new Set(scene.instances.map((item) => item.id));
+  const placedAssets = new Set(scene.instances.map((item) => item.asset_id));
+  (scene.prop_asset_ids || []).forEach((assetId, index) => {
+    if (placedAssets.has(assetId)) return;
+    const id = uniqueId(assetId, ids);
+    ids.add(id);
+    scene.instances.push({ id, asset_id: assetId, x: 1030 + index * 55, y: 405, width: 140, height: 205, rotation: 0, opacity: 1, z_index: index, visible: true });
+  });
+  scene.prop_asset_ids = [];
+}
+
+async function loadComposerAssets() {
+  try {
+    state.composerAssets = (await api("/api/assets")).filter((asset) => /\.(svg|png|webp)$/i.test(asset.path));
+    renderComposerAssetTray();
+  } catch (error) { toast(error.message, true); }
+}
+
+function renderComposerAssetTray() {
+  const query = $("#composer-asset-search").value.trim().toLowerCase();
+  const assets = state.composerAssets.filter((asset) => asset.path.toLowerCase().includes(query));
+  $("#composer-asset-list").innerHTML = assets.map((asset) => {
+    const name = asset.path.split("/").pop();
+    const category = asset.path.split("/")[0] || "visual";
+    return `<button class="composer-asset-item" draggable="true" data-asset-path="${escapeHtml(asset.path)}"><img src="${asset.url}" alt=""><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(category)}</small></span></button>`;
+  }).join("") || '<div class="empty-inspector">No matching visual assets.</div>';
+}
+
+function instanceById(id) {
+  return currentProjectScene()?.instances?.find((instance) => instance.id === id);
+}
+
+function renderComposer() {
+  const ready = Boolean(state.project?.scenes?.length);
+  $("#scene-notice").textContent = ready ? `${state.project.name} · drag an asset onto the stage` : "Choose a project to compose a scene.";
+  $("#save-scene").disabled = !ready;
+  $("#composer-scene-tabs").innerHTML = ready ? state.project.scenes.map((scene, index) => `<button class="${index === state.composerScene ? "active" : ""}" data-composer-scene="${index}">${escapeHtml(scene.id)}</button>`).join("") : "";
+  const scene = currentProjectScene();
+  normalizeSceneInstances(scene);
+  const stage = $("#scene-stage");
+  const base = '<defs><pattern id="stage-grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#ffffff" stroke-opacity=".045" stroke-width="1"/></pattern></defs><rect width="1280" height="720" fill="#11121d"/><rect width="1280" height="720" fill="url(#stage-grid)"/>';
+  if (!scene) { stage.innerHTML = base; renderInstanceInspector(); return; }
+  const background = state.project.assets.find((asset) => asset.id === scene.background_asset_id);
+  const backgroundSvg = background ? `<image href="${assetUrl(background.path)}" x="0" y="0" width="1280" height="720" preserveAspectRatio="xMidYMid slice"/>` : "";
+  const instances = [...scene.instances].sort((a, b) => (a.z_index - b.z_index) || a.id.localeCompare(b.id));
+  const instanceSvg = instances.map((instance) => {
+    const asset = state.project.assets.find((item) => item.id === instance.asset_id);
+    if (!asset) return "";
+    const selected = instance.id === state.selectedInstance;
+    const opacity = instance.visible ? instance.opacity : 0.2;
+    const selection = selected ? `<rect class="selection-outline" x="0" y="0" width="${instance.width}" height="${instance.height}"/><circle class="resize-handle" data-resize="true" cx="${instance.width}" cy="${instance.height}" r="12"/>` : "";
+    return `<g class="scene-instance${selected ? " selected" : ""}" data-instance-id="${escapeHtml(instance.id)}" transform="translate(${instance.x} ${instance.y}) rotate(${instance.rotation} ${instance.width / 2} ${instance.height / 2})" opacity="${opacity}"><image href="${assetUrl(asset.path)}" x="0" y="0" width="${instance.width}" height="${instance.height}" preserveAspectRatio="xMidYMid meet"/>${selection}</g>`;
+  }).join("");
+  stage.innerHTML = `${base}${backgroundSvg}${instanceSvg}`;
+  renderInstanceInspector();
+}
+
+function renderInstanceInspector() {
+  const instance = instanceById(state.selectedInstance);
+  $("#instance-controls").hidden = !instance;
+  $("#empty-inspector").hidden = Boolean(instance);
+  $("#instance-title").textContent = instance ? instance.id : "Nothing selected";
+  if (!instance) return;
+  $$('[data-instance-field]').forEach((input) => {
+    const field = input.dataset.instanceField;
+    if (field === "visible") input.checked = instance.visible;
+    else input.value = instance[field];
+  });
+}
+
+function registerProjectAsset(path) {
+  let asset = state.project.assets.find((item) => item.path === path);
+  if (asset) return asset;
+  const category = path.split("/")[0];
+  const kind = { characters: "character", scenes: "scene", props: "prop" }[category] || "prop";
+  const filename = path.split("/").pop().replace(/\.[^.]+$/, "");
+  const id = uniqueId(filename, new Set(state.project.assets.map((item) => item.id)));
+  asset = { id, kind, path };
+  state.project.assets.push(asset);
+  return asset;
+}
+
+function stagePoint(event) {
+  const bounds = $("#scene-stage").getBoundingClientRect();
+  return { x: (event.clientX - bounds.left) * 1280 / bounds.width, y: (event.clientY - bounds.top) * 720 / bounds.height };
+}
+
+function dropAssetOnStage(event) {
+  event.preventDefault();
+  $(".stage-shell").classList.remove("drag-over");
+  if (!currentProjectScene()) return toast("Open a project first", true);
+  const path = event.dataTransfer.getData("application/x-al-studio-asset") || event.dataTransfer.getData("text/plain");
+  if (!path || !state.composerAssets.some((asset) => asset.path === path)) return;
+  const asset = registerProjectAsset(path);
+  const point = stagePoint(event);
+  const isCharacter = asset.kind === "character";
+  const width = isCharacter ? 260 : 220;
+  const height = isCharacter ? 390 : 190;
+  const scene = currentProjectScene();
+  const id = uniqueId(asset.id, new Set(scene.instances.map((item) => item.id)));
+  const topLayer = Math.max(-1, ...scene.instances.map((item) => item.z_index)) + 1;
+  scene.instances.push({ id, asset_id: asset.id, x: Math.max(0, Math.min(1280 - width, point.x - width / 2)), y: Math.max(0, Math.min(720 - height, point.y - height / 2)), width, height, rotation: 0, opacity: 1, z_index: topLayer, visible: true });
+  state.selectedInstance = id;
+  renderComposer();
+}
+
+function beginStagePointer(event) {
+  const object = event.target.closest(".scene-instance");
+  if (!object) { state.selectedInstance = ""; renderComposer(); return; }
+  state.selectedInstance = object.dataset.instanceId;
+  const instance = instanceById(state.selectedInstance);
+  const point = stagePoint(event);
+  state.pointerDrag = { mode: event.target.dataset.resize ? "resize" : "move", startX: point.x, startY: point.y, x: instance.x, y: instance.y, width: instance.width, height: instance.height };
+  renderComposer();
+  event.preventDefault();
+}
+
+function moveStagePointer(event) {
+  if (!state.pointerDrag) return;
+  const instance = instanceById(state.selectedInstance);
+  if (!instance) return;
+  const point = stagePoint(event);
+  const dx = point.x - state.pointerDrag.startX;
+  const dy = point.y - state.pointerDrag.startY;
+  if (state.pointerDrag.mode === "move") {
+    instance.x = Math.round(Math.max(0, Math.min(1280 - instance.width, state.pointerDrag.x + dx)));
+    instance.y = Math.round(Math.max(0, Math.min(720 - instance.height, state.pointerDrag.y + dy)));
+  } else {
+    instance.width = Math.round(Math.max(30, Math.min(1280 - instance.x, state.pointerDrag.width + dx)));
+    instance.height = Math.round(Math.max(30, Math.min(720 - instance.y, state.pointerDrag.height + dy)));
+  }
+  renderComposer();
+}
+
+function editInstance(event) {
+  const instance = instanceById(state.selectedInstance);
+  if (!instance) return;
+  const field = event.target.dataset.instanceField;
+  instance[field] = field === "visible" ? event.target.checked : Number(event.target.value);
+  if (["width", "height"].includes(field)) instance[field] = Math.max(1, instance[field]);
+  if (field === "opacity") instance.opacity = Math.max(0, Math.min(1, instance.opacity));
+  renderComposer();
+}
+
+function changeLayer(direction) {
+  const instance = instanceById(state.selectedInstance);
+  const scene = currentProjectScene();
+  if (!instance || !scene) return;
+  const ordered = [...scene.instances].sort((a, b) => (a.z_index - b.z_index) || a.id.localeCompare(b.id));
+  const index = ordered.indexOf(instance);
+  const other = ordered[direction === "front" ? index + 1 : index - 1];
+  if (!other) return;
+  const layer = instance.z_index;
+  instance.z_index = other.z_index;
+  other.z_index = layer;
+  if (instance.z_index === other.z_index) instance.z_index += direction === "front" ? 1 : -1;
+  renderComposer();
+}
+
+function deleteSelectedInstance() {
+  const scene = currentProjectScene();
+  if (!scene || !state.selectedInstance) return;
+  scene.instances = scene.instances.filter((instance) => instance.id !== state.selectedInstance);
+  state.selectedInstance = "";
+  renderComposer();
+}
+
+async function saveScene() {
+  if (!state.projectName) return toast("Open a project first", true);
+  try {
+    await api(`/api/projects/${encodeURIComponent(state.projectName)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: state.project }) });
+    toast("Scene layout saved");
+  } catch (error) { toast(error.message, true); }
 }
 
 function currentScene() { return state.script?.scenes?.[state.scene]; }
@@ -243,6 +441,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#refresh-projects").addEventListener("click", () => loadProjects().catch((error) => toast(error.message, true)));
   $("#project-grid").addEventListener("click", (event) => { const card = event.target.closest("[data-project]"); if (card) openProject(card.dataset.project); });
   $("#project-select").addEventListener("change", (event) => openProject(event.target.value));
+  $("#composer-scene-tabs").addEventListener("click", (event) => { if (event.target.dataset.composerScene !== undefined) { state.composerScene = Number(event.target.dataset.composerScene); state.selectedInstance = ""; renderComposer(); } });
+  $("#composer-asset-search").addEventListener("input", renderComposerAssetTray);
+  $("#refresh-composer-assets").addEventListener("click", loadComposerAssets);
+  $("#composer-asset-list").addEventListener("dragstart", (event) => { const item = event.target.closest("[data-asset-path]"); if (item) { event.dataTransfer.setData("application/x-al-studio-asset", item.dataset.assetPath); event.dataTransfer.setData("text/plain", item.dataset.assetPath); } });
+  $(".stage-shell").addEventListener("dragover", (event) => { event.preventDefault(); $(".stage-shell").classList.add("drag-over"); });
+  $(".stage-shell").addEventListener("dragleave", () => $(".stage-shell").classList.remove("drag-over"));
+  $(".stage-shell").addEventListener("drop", dropAssetOnStage);
+  $("#scene-stage").addEventListener("pointerdown", beginStagePointer);
+  document.addEventListener("pointermove", moveStagePointer);
+  document.addEventListener("pointerup", () => { state.pointerDrag = null; });
+  $("#instance-controls").addEventListener("input", editInstance);
+  $("#instance-controls").addEventListener("click", (event) => { if (event.target.dataset.layer) changeLayer(event.target.dataset.layer); });
+  $("#delete-instance").addEventListener("click", deleteSelectedInstance);
+  $("#save-scene").addEventListener("click", saveScene);
   $("#scene-tabs").addEventListener("click", (event) => { if (event.target.dataset.scene !== undefined) { state.scene = Number(event.target.dataset.scene); renderScript(); } });
   $("#block-list").addEventListener("input", editBlock); $("#block-list").addEventListener("click", actOnBlock);
   $("#add-row").addEventListener("click", (event) => { if (event.target.dataset.add) addBlock(event.target.dataset.add); });

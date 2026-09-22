@@ -8,6 +8,7 @@ from html import escape
 from pathlib import Path
 
 from app.project import ProjectConfig
+from app.scenes import SceneInstance
 from app.script.timeline import TimelineEvent
 
 
@@ -61,15 +62,29 @@ class FrameRenderer:
         event = self._event_at(timeline, time_seconds)
         scene = self.scenes[event.scene_id]
         background = self._image(self.asset_paths[scene.background_asset_id], 0, 0, 1280, 720)
-        props = "".join(
+        legacy_props = "".join(
             self._image(self.asset_paths[prop_id], 1030 + index * 55, 405, 140, 205)
             for index, prop_id in enumerate(scene.prop_asset_ids)
         )
-        character_svg, mouth_open = self._character_svg(event, time_seconds, character_state)
+        character_instance = self._speaking_character_instance(event, scene.instances)
+        character_svg, mouth_open = self._character_svg(
+            event, time_seconds, character_state, character_instance
+        )
+        instances = "".join(
+            character_svg
+            if character_instance is not None
+            and instance.instance_id == character_instance.instance_id
+            else self._instance_svg(instance)
+            for instance in sorted(
+                scene.instances, key=lambda item: (item.z_index, item.instance_id)
+            )
+            if instance.visible
+        )
+        fallback_character = character_svg if character_instance is None else ""
         camera = scene.camera
         content = (
             f'<g transform="translate({camera.x} {camera.y}) scale({camera.zoom})">'
-            f"{background}{props}{character_svg}</g>"
+            f"{background}{legacy_props}{instances}{fallback_character}</g>"
         )
         svg = (
             '<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" '
@@ -110,31 +125,85 @@ class FrameRenderer:
         event: TimelineEvent,
         time_seconds: float,
         state: CharacterState,
+        instance: SceneInstance | None,
     ) -> tuple[str, bool]:
         if event.event_type != "dialogue" or not state.visible:
             return "", False
         character = self.characters[event.payload["speaker"]]
         if character.visual_asset_id is None:
             return "", False
-        scale_x = -state.scale if state.facing == "left" else state.scale
         mouth_open = int((time_seconds - event.start_seconds) * 12) % 2 == 0
-        mouth_height = 18 if mouth_open else 5
-        image = self._image(self.asset_paths[character.visual_asset_id], 0, 0, 320, 480)
+        width = instance.width if instance else 320
+        height = instance.height if instance else 480
+        mouth_height = height * (0.0375 if mouth_open else 0.0104)
+        image = self._image(self.asset_paths[character.visual_asset_id], 0, 0, width, height)
         mouth = (
-            f'<ellipse cx="160" cy="204" rx="28" ry="{mouth_height}" '
+            f'<ellipse cx="{width / 2}" cy="{height * 0.425}" '
+            f'rx="{width * 0.0875}" ry="{mouth_height}" '
             'fill="#8a3d4b" data-mouth="open"/>'
             if mouth_open
-            else '<path d="M132 204h56" stroke="#8a3d4b" stroke-width="6" '
+            else f'<path d="M{width * 0.4125} {height * 0.425}h{width * 0.175}" '
+            f' stroke="#8a3d4b" stroke-width="{max(2, width * 0.01875)}" '
             'stroke-linecap="round" data-mouth="closed"/>'
         )
-        transform = f"translate({state.x} {state.y}) scale({scale_x} {state.scale})"
+        if instance:
+            transform = (
+                f"translate({instance.x} {instance.y}) "
+                f"rotate({instance.rotation} {width / 2} {height / 2})"
+            )
+            opacity = instance.opacity
+            instance_attribute = f' data-instance="{escape(instance.instance_id)}"'
+        else:
+            scale_x = -state.scale if state.facing == "left" else state.scale
+            transform = f"translate({state.x} {state.y}) scale({scale_x} {state.scale})"
+            opacity = 1
+            instance_attribute = ""
         return (
-            f'<g transform="{transform}" data-expression="{escape(state.expression)}">{image}{mouth}</g>',
+            (
+                f'<g transform="{transform}" opacity="{opacity}"{instance_attribute} '
+                f'data-expression="{escape(state.expression)}">{image}{mouth}</g>'
+            ),
             mouth_open,
+        )
+
+    def _instance_svg(self, instance: SceneInstance) -> str:
+        image = self._image(
+            self.asset_paths[instance.asset_id], 0, 0, instance.width, instance.height
+        )
+        transform = (
+            f"translate({instance.x} {instance.y}) "
+            f"rotate({instance.rotation} {instance.width / 2} {instance.height / 2})"
+        )
+        return (
+            f'<g transform="{transform}" opacity="{instance.opacity}" '
+            f'data-instance="{escape(instance.instance_id)}">{image}</g>'
+        )
+
+    def _speaking_character_instance(
+        self,
+        event: TimelineEvent,
+        instances: tuple[SceneInstance, ...],
+    ) -> SceneInstance | None:
+        if event.event_type != "dialogue":
+            return None
+        character = self.characters[event.payload["speaker"]]
+        if character.visual_asset_id is None:
+            return None
+        return next(
+            (
+                instance
+                for instance in instances
+                if instance.asset_id == character.visual_asset_id and instance.visible
+            ),
+            None,
         )
 
     @staticmethod
     def _image(path: Path, x: float, y: float, width: float, height: float) -> str:
         encoded = base64.b64encode(path.read_bytes()).decode("ascii")
-        mime_type = "image/svg+xml" if path.suffix.lower() == ".svg" else "image/png"
+        mime_type = {
+            ".svg": "image/svg+xml",
+            ".png": "image/png",
+            ".webp": "image/webp",
+        }[path.suffix.lower()]
         return f'<image href="data:{mime_type};base64,{encoded}" x="{x}" y="{y}" width="{width}" height="{height}"/>'

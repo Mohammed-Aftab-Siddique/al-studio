@@ -9,6 +9,7 @@
     <a class="brand" href="#projects"><span class="brand-mark">A</span><span>Al Studio<small>Local story engine</small></span></a>
     <nav aria-label="Workspace">
       <button class="nav-item active" data-view="projects"><span>▦</span> Projects</button>
+      <button class="nav-item" data-view="scene"><span>◫</span> Scene</button>
       <button class="nav-item" data-view="script"><span>✦</span> Script</button>
       <button class="nav-item" data-view="assets"><span>◇</span> Assets</button>
       <button class="nav-item" data-view="voice"><span>◖</span> Voice lab</button>
@@ -22,6 +23,16 @@
       <div class="hero panel"><div><p class="eyebrow accent">YOUR STORIES</p><h2>Build something worth watching.</h2><p>Create a project or continue exactly where you left off. Everything stays on your machine.</p></div><button class="primary" id="new-project">＋ New project</button></div>
       <div class="section-heading"><div><h2>Recent projects</h2><p>Open a project to edit its script, voices, assets, and output.</p></div><button class="quiet" id="refresh-projects">↻ Refresh</button></div>
       <div class="project-grid" id="project-grid"></div><div class="empty panel" id="project-empty"><span>✦</span><h3>Your first story starts here</h3><p>Create a project with a ready-to-edit opening scene.</p></div>
+    </section>
+    <section class="view" id="view-scene">
+      <div class="section-heading"><div><p class="eyebrow accent">SCENE COMPOSER</p><h2>Place every part of the shot.</h2><p>Drag visual assets onto the stage, position and resize them, then save the layout to the project.</p></div><button class="primary" id="save-scene">Save scene</button></div>
+      <div class="notice" id="scene-notice">Choose a project to compose a scene.</div>
+      <div class="composer-scene-tabs scene-tabs" id="composer-scene-tabs"></div>
+      <div class="composer-layout">
+        <aside class="panel composer-assets"><div class="composer-panel-head"><div><p class="eyebrow">ASSET TRAY</p><h3>Drag onto stage</h3></div><button class="icon-button" id="refresh-composer-assets" title="Refresh assets">↻</button></div><input id="composer-asset-search" placeholder="Search visual assets"><div id="composer-asset-list" class="composer-asset-list"></div></aside>
+        <div class="stage-column"><div class="stage-shell panel"><svg id="scene-stage" viewBox="0 0 1280 720" role="application" aria-label="Scene composition stage"><defs><pattern id="stage-grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#ffffff" stroke-opacity=".045" stroke-width="1"/></pattern></defs><rect width="1280" height="720" fill="#11121d"/><rect width="1280" height="720" fill="url(#stage-grid)"/></svg></div><p class="stage-help">Drop an asset on the stage. Drag to move it; drag the lower-right handle to resize.</p></div>
+        <aside class="panel instance-inspector"><p class="eyebrow">SELECTION</p><h3 id="instance-title">Nothing selected</h3><div id="instance-controls" hidden><div class="inspector-grid"><label>X<input type="number" data-instance-field="x"></label><label>Y<input type="number" data-instance-field="y"></label><label>Width<input type="number" min="1" data-instance-field="width"></label><label>Height<input type="number" min="1" data-instance-field="height"></label><label>Rotation<input type="number" step="1" data-instance-field="rotation"></label><label>Opacity<input type="number" min="0" max="1" step="0.05" data-instance-field="opacity"></label></div><label class="visibility-control"><input type="checkbox" data-instance-field="visible"> Visible</label><div class="layer-actions"><button class="secondary" data-layer="back">Move backward</button><button class="secondary" data-layer="front">Move forward</button></div><button class="danger-button" id="delete-instance">Remove from scene</button></div><div class="empty-inspector" id="empty-inspector">Select an object to edit its exact placement and layer.</div></aside>
+      </div>
     </section>
     <section class="view" id="view-script">
       <div class="section-heading"><div><p class="eyebrow accent">BLOCK EDITOR</p><h2>Shape the story, beat by beat.</h2><p>Dialogue, captions, and timed actions are saved to the project script.</p></div><button class="primary" id="save-script">Save script</button></div>

@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from app.audio.kokoro import KokoroVoiceEngine
 from app.pipeline import RenderPipeline
-from app.project import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, ProjectAssetManager
+from app.project import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, ProjectAssetManager, ProjectConfig
 from app.script import load_script, parse_script
 
 WEB_DIR = Path(__file__).resolve().parent
@@ -32,6 +32,10 @@ class ProjectPayload(BaseModel):
 
 
 class ScriptPayload(BaseModel):
+    content: dict[str, Any]
+
+
+class ProjectDocument(BaseModel):
     content: dict[str, Any]
 
 
@@ -187,6 +191,19 @@ def create_app(
             "script": _json(project_path(name, "script.json")),
         }
 
+    @web.put("/api/projects/{name}")
+    async def save_project(name: str, payload: ProjectDocument) -> dict[str, str]:
+        path = project_path(name, "project.json")
+        if not path.is_file():
+            raise HTTPException(404, "Project not found")
+        try:
+            project = ProjectConfig.from_dict(payload.content)
+            ProjectAssetManager(assets_root).validate_assets(project)
+        except (OSError, ValueError) as error:
+            raise HTTPException(422, str(error)) from error
+        path.write_text(json.dumps(payload.content, indent=2) + "\n", encoding="utf-8")
+        return {"status": "saved"}
+
     @web.get("/api/projects/{name}/script")
     async def get_script(name: str) -> dict[str, Any]:
         return _json(project_path(name, "script.json"))
@@ -208,9 +225,13 @@ def create_app(
         if not assets_root.exists():
             return []
         return [
-            {"path": str(path.relative_to(assets_root)), "size": path.stat().st_size}
+            {
+                "path": str(path.relative_to(assets_root)),
+                "size": path.stat().st_size,
+                "url": f"/asset-media/{quote(path.relative_to(assets_root).as_posix())}",
+            }
             for path in sorted(assets_root.rglob("*"))
-            if path.is_file()
+            if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS | AUDIO_EXTENSIONS
         ]
 
     @web.post("/api/assets/{category}", status_code=201)
@@ -331,6 +352,20 @@ def create_app(
         path = _within(output_root, relative_path)
         if not path.is_file():
             raise HTTPException(404, "Output file not found")
+
+        async def chunks():
+            with path.open("rb") as stream:
+                while chunk := stream.read(1024 * 1024):
+                    yield chunk
+
+        media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        return StreamingResponse(chunks(), media_type=media_type)
+
+    @web.get("/asset-media/{relative_path:path}")
+    async def asset_media(relative_path: str) -> StreamingResponse:
+        path = _within(assets_root, relative_path)
+        if not path.is_file() or path.suffix.lower() not in IMAGE_EXTENSIONS | AUDIO_EXTENSIONS:
+            raise HTTPException(404, "Asset file not found")
 
         async def chunks():
             with path.open("rb") as stream:

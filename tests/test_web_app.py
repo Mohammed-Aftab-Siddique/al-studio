@@ -63,6 +63,7 @@ def test_web_shell_and_static_assets_are_available(tmp_path: Path) -> None:
     script = call(app, "GET", "/static/app.js")
     assert "Al Studio" in home.text
     assert "block-list" in home.text
+    assert "scene-stage" in home.text
     assert "startRender" in script.text
 
 
@@ -107,6 +108,38 @@ def test_asset_import_is_type_checked_and_confined(tmp_path: Path) -> None:
     assert traversal.status_code == 400
     assert wrong_type.status_code == 415
     assert duplicate.status_code == 409
+
+
+def test_scene_layout_can_be_saved_and_asset_previews_are_confined(tmp_path: Path) -> None:
+    app = make_app(tmp_path)
+    create_demo(app)
+    imported = call(app, "POST", "/api/assets/characters?filename=hero.svg", content=b"<svg/>")
+    project = call(app, "GET", "/api/projects/demo-story").json()["project"]
+    project["assets"].append({"id": "hero", "kind": "character", "path": "characters/hero.svg"})
+    project["scenes"][0]["instances"] = [
+        {
+            "id": "hero-left",
+            "asset_id": "hero",
+            "x": 80,
+            "y": 190,
+            "width": 280,
+            "height": 460,
+            "rotation": 0,
+            "opacity": 1,
+            "z_index": 1,
+            "visible": True,
+        }
+    ]
+
+    saved = call(app, "PUT", "/api/projects/demo-story", json={"content": project})
+    reopened = call(app, "GET", "/api/projects/demo-story").json()["project"]
+    preview = call(app, "GET", imported.json().get("url", "/asset-media/characters/hero.svg"))
+    escaped = call(app, "GET", "/asset-media/%2E%2E/secret.svg")
+
+    assert saved.json() == {"status": "saved"}
+    assert reopened["scenes"][0]["instances"][0]["x"] == 80
+    assert preview.content == b"<svg/>"
+    assert escaped.status_code in {400, 404}
 
 
 def test_voice_preview_returns_playable_local_media(tmp_path: Path) -> None:

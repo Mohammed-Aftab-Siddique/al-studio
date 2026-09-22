@@ -134,8 +134,30 @@ flowchart LR
     script --> validator
     assets --> validator
     settings --> validator
-    validator --> model
+validator --> model
 ```
+
+### Scene instance model
+
+Reusable visual assets are placed through scene instances rather than having
+coordinates baked into the source files. Each instance owns an ID, asset
+reference, X/Y position, width, height, rotation, opacity, visibility, and
+z-index. The browser stage and SVG renderer both use the render coordinate
+system, so saved layout values are WYSIWYG.
+
+```mermaid
+flowchart LR
+    library[Reusable visual asset] --> drag[Browser drag and drop]
+    drag --> instance[SceneInstance<br/>transform + layer]
+    inspector[Move / resize / exact inspector] --> instance
+    instance --> project[Validated project.json]
+    project --> renderer[SVG frame renderer]
+    renderer --> frame[Identical positioned frame]
+```
+
+Characters with a matching scene instance retain that placement when dialogue
+mouth animation is active. Older `prop_asset_ids` remain supported and can be
+migrated into explicit instances by the Scene workspace.
 
 ### Proposed responsibility boundaries
 

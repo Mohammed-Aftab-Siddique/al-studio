@@ -113,10 +113,25 @@ and OGG. Imports are limited to 50 MB, duplicate filenames are rejected, and
 every destination is confined to the matching directory beneath `assets/`.
 The asset library shows the stored relative path and file size after import.
 
-Importing adds a reusable file to the library but does not silently alter an
-existing project's configuration. To assign new visuals to characters or
-scenes, update that project's `project.json` using the format documented in
-the CLI-oriented sections below, save it, and reopen the project in Al Studio.
+Importing adds a reusable file to the library. Open **Scene** to place the
+visual asset in the selected project's composition; audio assets remain
+available to the underlying project format for future audio-track controls.
+
+### Compose a Scene in the Browser
+
+1. Select a project and open **Scene**.
+2. Select the scene tab you want to edit.
+3. Drag a character, prop, or scene image from the Asset Tray onto the stage.
+4. Drag the placed object to move it. Drag its lower-right handle to resize it.
+5. Use the Selection inspector for exact X/Y coordinates, width, height,
+   rotation, opacity, visibility, and forward/backward layer ordering.
+6. Choose **Save scene** to validate and write the layout to `project.json`.
+
+The stage uses the same `1280 × 720` coordinate system as the renderer, so the
+saved composition matches the generated frames. Each drop creates an
+independent scene instance: the same reusable asset can be placed more than
+once with different transforms. Older `prop_asset_ids` projects are converted
+to explicit instances when their scene is edited and saved.
 
 ### Write a Story in the Browser
 

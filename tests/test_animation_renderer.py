@@ -6,8 +6,8 @@ import soundfile as sf
 
 from app.animation import CharacterState, FrameRenderer
 from app.audio.voice import VoiceEngine
-from app.project import ProjectAssetManager
-from app.script import DialogueTimelineBuilder, load_script
+from app.project import ProjectAssetManager, ProjectConfig
+from app.script import DialogueTimelineBuilder, TimelineEvent, load_script
 
 
 class FakeVoiceEngine(VoiceEngine):
@@ -64,3 +64,63 @@ def test_character_state_validates_core_rig_properties() -> None:
         CharacterState(facing="up")
     with pytest.raises(ValueError, match="scale must be greater than zero"):
         CharacterState(scale=0)
+
+
+def test_frame_renderer_honors_instance_transform_layer_and_character_placement(
+    tmp_path: Path,
+) -> None:
+    for relative in ("scenes/room.svg", "characters/hero.svg", "props/cat.svg"):
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("<svg xmlns='http://www.w3.org/2000/svg'/>", encoding="utf-8")
+    project = ProjectConfig.from_dict(
+        {
+            "schema_version": 1,
+            "name": "composed",
+            "assets": [
+                {"id": "room", "kind": "scene", "path": "scenes/room.svg"},
+                {"id": "hero", "kind": "character", "path": "characters/hero.svg"},
+                {"id": "cat", "kind": "prop", "path": "props/cat.svg"},
+            ],
+            "characters": [{"name": "Alex", "voice_id": "am_adam", "visual_asset_id": "hero"}],
+            "scenes": [
+                {
+                    "id": "room",
+                    "background_asset_id": "room",
+                    "instances": [
+                        {
+                            "id": "hero-left",
+                            "asset_id": "hero",
+                            "x": 80,
+                            "y": 170,
+                            "width": 300,
+                            "height": 500,
+                            "rotation": -5,
+                            "z_index": 2,
+                        },
+                        {
+                            "id": "cat-right",
+                            "asset_id": "cat",
+                            "x": 900,
+                            "y": 470,
+                            "width": 220,
+                            "height": 180,
+                            "opacity": 0.8,
+                            "z_index": 5,
+                        },
+                    ],
+                }
+            ],
+        }
+    )
+    assets = ProjectAssetManager(tmp_path).validate_assets(project)
+    timeline = (TimelineEvent("room-000", "dialogue", "room", 0, 1, {"speaker": "Alex"}),)
+
+    frame = FrameRenderer(project, assets).render_frame(timeline, 0, tmp_path / "frame.svg")
+    contents = frame.path.read_text(encoding="utf-8")
+
+    assert 'transform="translate(80 170) rotate(-5 150.0 250.0)"' in contents
+    assert 'data-instance="hero-left"' in contents
+    assert 'data-instance="cat-right"' in contents
+    assert 'opacity="0.8"' in contents
+    assert contents.index('data-instance="hero-left"') < contents.index('data-instance="cat-right"')

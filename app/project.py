@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, cast
 
 from app.characters import AnimationConfig, CharacterConfig
-from app.scenes import CameraConfig, SceneConfig
+from app.scenes import CameraConfig, SceneConfig, SceneInstance
 
 CURRENT_SCHEMA_VERSION = 1
 ASSET_KINDS = frozenset({"character", "scene", "prop", "audio", "music"})
@@ -87,6 +87,14 @@ class ProjectConfig:
             self._validate_asset_reference(scene.background_asset_id, "scene", asset_by_id)
             for prop_asset_id in scene.prop_asset_ids:
                 self._validate_asset_reference(prop_asset_id, "prop", asset_by_id)
+            for instance in scene.instances:
+                asset = asset_by_id.get(instance.asset_id)
+                if asset is None:
+                    raise ProjectConfigError(f"unknown instance asset: {instance.asset_id}")
+                if asset.kind not in {"character", "scene", "prop"}:
+                    raise ProjectConfigError(
+                        f"instance asset {instance.asset_id} must be a visual asset"
+                    )
 
     @staticmethod
     def _validate_unique(label: str, values: Any) -> None:
@@ -175,15 +183,34 @@ class ProjectConfig:
         props = data.get("prop_asset_ids", [])
         if not isinstance(props, list):
             raise ProjectConfigError("prop_asset_ids must be a list")
+        instances = data.get("instances", [])
+        if not isinstance(instances, list) or not all(isinstance(item, dict) for item in instances):
+            raise ProjectConfigError("instances must be a list of objects")
         return SceneConfig(
             scene_id=_required_string(data, "id"),
             background_asset_id=_required_string(data, "background_asset_id"),
             prop_asset_ids=tuple(props),
+            instances=tuple(ProjectConfig._instance_from_dict(item) for item in instances),
             camera=CameraConfig(
                 x=camera_data.get("x", 0.0),
                 y=camera_data.get("y", 0.0),
                 zoom=camera_data.get("zoom", 1.0),
             ),
+        )
+
+    @staticmethod
+    def _instance_from_dict(data: dict[str, Any]) -> SceneInstance:
+        return SceneInstance(
+            instance_id=_required_string(data, "id"),
+            asset_id=_required_string(data, "asset_id"),
+            x=cast(float, data.get("x")),
+            y=cast(float, data.get("y")),
+            width=cast(float, data.get("width")),
+            height=cast(float, data.get("height")),
+            rotation=data.get("rotation", 0.0),
+            opacity=data.get("opacity", 1.0),
+            z_index=data.get("z_index", 0),
+            visible=data.get("visible", True),
         )
 
     @staticmethod

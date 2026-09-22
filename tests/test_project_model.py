@@ -51,6 +51,70 @@ def test_future_schema_version_is_rejected() -> None:
         ProjectConfig.from_dict({"schema_version": 2, "name": "future"})
 
 
+def test_scene_instances_validate_placement_and_visual_asset_references() -> None:
+    project = ProjectConfig.from_dict(
+        {
+            "schema_version": 1,
+            "name": "composed",
+            "assets": [
+                {"id": "room", "kind": "scene", "path": "scenes/starter-room.svg"},
+                {"id": "hero", "kind": "character", "path": "characters/alex.svg"},
+            ],
+            "characters": [],
+            "scenes": [
+                {
+                    "id": "opening",
+                    "background_asset_id": "room",
+                    "instances": [
+                        {
+                            "id": "hero-left",
+                            "asset_id": "hero",
+                            "x": 90,
+                            "y": 180,
+                            "width": 280,
+                            "height": 480,
+                            "rotation": -4,
+                            "opacity": 0.9,
+                            "z_index": 3,
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    instance = project.scenes[0].instances[0]
+    assert instance.instance_id == "hero-left"
+    assert instance.rotation == -4
+    assert instance.opacity == 0.9
+
+    with pytest.raises(ProjectConfigError, match="unknown instance asset: missing"):
+        ProjectConfig.from_dict(
+            {
+                "schema_version": 1,
+                "name": "invalid-instance",
+                "assets": [{"id": "room", "kind": "scene", "path": "scenes/starter-room.svg"}],
+                "characters": [],
+                "scenes": [
+                    {
+                        "id": "opening",
+                        "background_asset_id": "room",
+                        "instances": [
+                            {
+                                "id": "missing",
+                                "asset_id": "missing",
+                                "x": 0,
+                                "y": 0,
+                                "width": 100,
+                                "height": 100,
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+
 def test_character_visual_reference_must_exist_and_match_its_kind() -> None:
     with pytest.raises(ProjectConfigError, match="unknown character asset: missing"):
         ProjectConfig.from_dict(
