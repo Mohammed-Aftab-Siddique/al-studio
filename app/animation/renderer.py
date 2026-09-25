@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 
-from app.project import ProjectConfig
-from app.scenes import SceneInstance
+from app.project import AssetAnimationCapability, ProjectConfig, capability_asset_key
+from app.scenes import SceneAnimation, SceneInstance
 from app.script.timeline import TimelineEvent
 
 from .presets import AnimationTransform, evaluate_animations
@@ -53,6 +53,7 @@ class FrameRenderer:
         self.asset_paths = asset_paths
         self.scenes = {scene.scene_id: scene for scene in project.scenes}
         self.characters = {character.name: character for character in project.characters}
+        self.assets = {asset.asset_id: asset for asset in project.assets}
 
     def render_frame(
         self,
@@ -88,14 +89,23 @@ class FrameRenderer:
             else AnimationTransform()
         )
         character_svg, mouth_open = self._character_svg(
-            event, time_seconds, character_state, character_instance, character_animation
+            event,
+            time_seconds,
+            character_state,
+            character_instance,
+            character_animation,
+            scene.animations,
+            scene_time,
         )
         instances = "".join(
             character_svg
             if character_instance is not None
             and instance.instance_id == character_instance.instance_id
             else self._instance_svg(
-                instance, evaluate_animations(instance.instance_id, scene.animations, scene_time)
+                instance,
+                evaluate_animations(instance.instance_id, scene.animations, scene_time),
+                scene.animations,
+                scene_time,
             )
             for instance in sorted(
                 scene.instances, key=lambda item: (item.z_index, item.instance_id)
@@ -163,6 +173,8 @@ class FrameRenderer:
         state: CharacterState,
         instance: SceneInstance | None,
         animation: AnimationTransform,
+        scene_animations: tuple[SceneAnimation, ...],
+        scene_time: float,
     ) -> tuple[str, bool]:
         if event.event_type != "dialogue" or not state.visible:
             return "", False
@@ -173,7 +185,11 @@ class FrameRenderer:
         width = instance.width if instance else 320
         height = instance.height if instance else 480
         mouth_height = height * (0.0375 if mouth_open else 0.0104)
-        image = self._image(self.asset_paths[character.visual_asset_id], 0, 0, width, height)
+        image = (
+            self._instance_image(instance, width, height, scene_animations, scene_time)
+            if instance
+            else self._image(self.asset_paths[character.visual_asset_id], 0, 0, width, height)
+        )
         mouth = (
             f'<ellipse cx="{width / 2}" cy="{height * 0.425}" '
             f'rx="{width * 0.0875}" ry="{mouth_height}" '
@@ -200,14 +216,107 @@ class FrameRenderer:
             mouth_open,
         )
 
-    def _instance_svg(self, instance: SceneInstance, animation: AnimationTransform) -> str:
-        image = self._image(
-            self.asset_paths[instance.asset_id], 0, 0, instance.width, instance.height
+    def _instance_svg(
+        self,
+        instance: SceneInstance,
+        animation: AnimationTransform,
+        scene_animations: tuple[SceneAnimation, ...],
+        scene_time: float,
+    ) -> str:
+        image = self._instance_image(
+            instance,
+            instance.width,
+            instance.height,
+            scene_animations,
+            scene_time,
         )
         transform = self._instance_transform(instance, animation)
         return (
             f'<g transform="{transform}" opacity="{instance.opacity * animation.opacity}" '
             f'data-instance="{escape(instance.instance_id)}">{image}</g>'
+        )
+
+    def _instance_image(
+        self,
+        instance: SceneInstance,
+        width: float,
+        height: float,
+        scene_animations: tuple[SceneAnimation, ...],
+        scene_time: float,
+    ) -> str:
+        selected = self._asset_animation_at(instance, scene_animations, scene_time)
+        if selected is None:
+            return self._image(self.asset_paths[instance.asset_id], 0, 0, width, height)
+        capability, frame = selected
+        key = capability_asset_key(
+            instance.asset_id,
+            capability.animation_id,
+            0 if capability.animation_type == "sprite_sheet" else frame,
+        )
+        path = self.asset_paths[key]
+        if capability.animation_type == "frame_sequence":
+            image = self._image(path, 0, 0, width, height)
+            return (
+                f'<g data-asset-animation="{escape(capability.animation_id)}" '
+                f'data-frame="{frame}">{image}</g>'
+            )
+        return self._sprite_sheet_image(path, capability, frame, width, height)
+
+    def _asset_animation_at(
+        self,
+        instance: SceneInstance,
+        animations: tuple[SceneAnimation, ...],
+        scene_time: float,
+    ) -> tuple[AssetAnimationCapability, int] | None:
+        candidates = [
+            animation
+            for animation in animations
+            if animation.target_instance_id == instance.instance_id
+            and animation.preset == "asset"
+            and animation.start_seconds <= scene_time
+        ]
+        if not candidates:
+            return None
+        animation = max(candidates, key=lambda item: (item.start_seconds, item.animation_id))
+        capability = next(
+            item
+            for item in self.assets[instance.asset_id].animations
+            if item.animation_id == animation.asset_animation_id
+        )
+        elapsed = scene_time - animation.start_seconds
+        frame = int(elapsed * capability.fps)
+        if animation.loop:
+            frame %= capability.total_frames
+        else:
+            frame = min(frame, capability.total_frames - 1)
+        return capability, frame
+
+    def _sprite_sheet_image(
+        self,
+        path: Path,
+        capability: AssetAnimationCapability,
+        frame: int,
+        width: float,
+        height: float,
+    ) -> str:
+        frame_width = capability.frame_width or 1
+        frame_height = capability.frame_height or 1
+        columns = capability.columns or 1
+        rows = (capability.total_frames + columns - 1) // columns
+        source_x = frame % columns * frame_width
+        source_y = frame // columns * frame_height
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+        mime_type = {".png": "image/png", ".webp": "image/webp", ".svg": "image/svg+xml"}[
+            path.suffix.lower()
+        ]
+        return (
+            f'<svg x="0" y="0" width="{width}" height="{height}" '
+            f'viewBox="{source_x} {source_y} {frame_width} {frame_height}" '
+            'preserveAspectRatio="none" '
+            f'data-asset-animation="{escape(capability.animation_id)}" data-frame="{frame}">'
+            f'<image href="data:{mime_type};base64,{encoded}" x="0" y="0" '
+            f'width="{frame_width * columns}" height="{frame_height * rows}"/>'
+            "</svg>"
         )
 
     @staticmethod

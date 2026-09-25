@@ -169,3 +169,116 @@ def test_frame_renderer_honors_instance_transform_layer_and_character_placement(
 
     assert 'data-instance="hero-left"' in animated_contents
     assert 'transform="translate(-10.0 170.0)' in animated_contents
+
+
+def test_renderer_plays_sprite_sheet_and_frame_sequence_capabilities(tmp_path: Path) -> None:
+    for relative in (
+        "scenes/room.svg",
+        "characters/hero.svg",
+        "characters/walk.png",
+        "props/cat.svg",
+        "props/cat-0.png",
+        "props/cat-1.png",
+    ):
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"image")
+    project = ProjectConfig.from_dict(
+        {
+            "schema_version": 1,
+            "name": "asset-animation",
+            "assets": [
+                {"id": "room", "kind": "scene", "path": "scenes/room.svg"},
+                {
+                    "id": "hero",
+                    "kind": "character",
+                    "path": "characters/hero.svg",
+                    "capabilities": {
+                        "animations": [
+                            {
+                                "id": "walk",
+                                "type": "sprite_sheet",
+                                "path": "characters/walk.png",
+                                "frame_width": 64,
+                                "frame_height": 96,
+                                "frame_count": 4,
+                                "columns": 2,
+                                "fps": 4,
+                            }
+                        ]
+                    },
+                },
+                {
+                    "id": "cat",
+                    "kind": "prop",
+                    "path": "props/cat.svg",
+                    "capabilities": {
+                        "animations": [
+                            {
+                                "id": "blink",
+                                "type": "frame_sequence",
+                                "frames": ["props/cat-0.png", "props/cat-1.png"],
+                                "fps": 4,
+                            }
+                        ]
+                    },
+                },
+            ],
+            "characters": [],
+            "scenes": [
+                {
+                    "id": "room",
+                    "background_asset_id": "room",
+                    "instances": [
+                        {
+                            "id": "hero",
+                            "asset_id": "hero",
+                            "x": 0,
+                            "y": 0,
+                            "width": 200,
+                            "height": 300,
+                        },
+                        {
+                            "id": "cat",
+                            "asset_id": "cat",
+                            "x": 500,
+                            "y": 300,
+                            "width": 180,
+                            "height": 160,
+                        },
+                    ],
+                    "animations": [
+                        {
+                            "id": "hero-walk",
+                            "target": "hero",
+                            "preset": "asset",
+                            "asset_animation_id": "walk",
+                            "start_seconds": 0,
+                            "duration_seconds": 1,
+                            "loop": True,
+                        },
+                        {
+                            "id": "cat-blink",
+                            "target": "cat",
+                            "preset": "asset",
+                            "asset_animation_id": "blink",
+                            "start_seconds": 0,
+                            "duration_seconds": 1,
+                            "loop": False,
+                        },
+                    ],
+                }
+            ],
+        }
+    )
+    assets = ProjectAssetManager(tmp_path).validate_assets(project)
+    timeline = (TimelineEvent("hold", "scene_hold", "room", 0, 1, {}, "visual", 0, 1),)
+
+    frame = FrameRenderer(project, assets).render_frame(
+        timeline, 0.3, tmp_path / "capabilities.svg"
+    )
+    contents = frame.path.read_text(encoding="utf-8")
+
+    assert 'data-asset-animation="walk" data-frame="1"' in contents
+    assert 'viewBox="64 0 64 96"' in contents
+    assert 'data-asset-animation="blink" data-frame="1"' in contents

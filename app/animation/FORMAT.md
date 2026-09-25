@@ -12,3 +12,20 @@ direction, and loop flag. Supported presets are `fade-in`, `fade-out`,
 `slide-in`, `bounce`, `float`, `pulse`, `rotate`, and `shake`. Preset transforms
 are evaluated for each frame and composed with the instance's saved transform;
 no browser-only CSS animation is used in the rendered output.
+
+## Asset Capability Manifest
+
+A visual asset may include `capabilities.animations` in its project entry.
+Each animation has a unique `id`, a positive `fps`, an optional `loop` default,
+and one of these representations:
+
+- `sprite_sheet`: one safe asset-relative `path` plus positive `frame_width`,
+  `frame_height`, `frame_count`, and `columns` values.
+- `frame_sequence`: a non-empty ordered `frames` list of safe asset-relative
+  image paths.
+
+Scene clips select a capability with `preset: "asset"` and
+`asset_animation_id`. At scene time `t`, the deterministic frame index is
+`floor((t - start_seconds) * fps)`. Looping clips apply modulo frame count;
+non-looping clips hold their final frame. Sprite sheets are cropped through an
+SVG view box, while frame sequences embed the resolved image for that index.

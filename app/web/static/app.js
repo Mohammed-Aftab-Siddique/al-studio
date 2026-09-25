@@ -120,7 +120,7 @@ function normalizeSceneInstances(scene) {
 function sceneTimelineData(scene) {
   const clips = { visual: [], dialogue: [], caption: [], audio: [] };
   if (!scene) return { clips, duration: 1 };
-  (scene.animations || []).forEach((animation) => clips.visual.push({ start: animation.start_seconds, duration: animation.duration_seconds, label: `${animation.preset}${animation.loop ? " ↻" : ""}` }));
+  (scene.animations || []).forEach((animation) => clips.visual.push({ start: animation.start_seconds, duration: animation.duration_seconds, label: `${animation.preset === "asset" ? animation.asset_animation_id : animation.preset}${animation.loop ? " ↻" : ""}` }));
   const scriptScene = scriptSceneFor(scene);
   let cursor = 0;
   (scriptScene?.events || []).forEach((event) => {
@@ -188,8 +188,18 @@ const animationLabels = { "fade-in": "Fade in", "fade-out": "Fade out", "slide-i
 
 function availableAnimations(instance) {
   const asset = state.project?.assets?.find((item) => item.id === instance?.asset_id);
-  if (asset?.kind === "scene") return ["fade-in", "fade-out", "slide-in", "pulse"];
-  return Object.keys(animationLabels);
+  const universal = asset?.kind === "scene" ? ["fade-in", "fade-out", "slide-in", "pulse"] : Object.keys(animationLabels);
+  const presets = universal.map((name) => ({ value: name, label: animationLabels[name] }));
+  const capabilities = (asset?.capabilities?.animations || []).map((animation) => ({ value: `asset:${animation.id}`, label: `${animation.id} · ${animation.type === "sprite_sheet" ? "Sprite sheet" : "Frame sequence"}` }));
+  return [...capabilities, ...presets];
+}
+
+function animationChoice(animation) {
+  return animation.preset === "asset" ? `asset:${animation.asset_animation_id}` : animation.preset;
+}
+
+function animationDisplayLabel(animation) {
+  return animation.preset === "asset" ? animation.asset_animation_id : animationLabels[animation.preset];
 }
 
 function easeAnimation(progress, easing) {
@@ -228,6 +238,31 @@ function evaluateInstanceAnimations(instanceId, animations, time) {
   }, { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 });
 }
 
+function assetAnimationFrame(instance, animations, time) {
+  const clips = animations.filter((item) => item.target === instance.id && item.preset === "asset" && item.start_seconds <= time).sort((a, b) => (a.start_seconds - b.start_seconds) || a.id.localeCompare(b.id));
+  const clip = clips.at(-1);
+  if (!clip) return null;
+  const asset = state.project.assets.find((item) => item.id === instance.asset_id);
+  const capability = asset?.capabilities?.animations?.find((item) => item.id === clip.asset_animation_id);
+  if (!capability) return null;
+  const count = capability.type === "sprite_sheet" ? capability.frame_count : capability.frames.length;
+  let frame = Math.floor((time - clip.start_seconds) * capability.fps);
+  frame = clip.loop ? frame % count : Math.min(frame, count - 1);
+  return { capability, frame };
+}
+
+function instanceImageMarkup(instance, asset, scene) {
+  const selected = state.animationPreviewTime === null ? null : assetAnimationFrame(instance, scene.animations, state.animationPreviewTime);
+  if (!selected) return `<image href="${assetUrl(asset.path)}" x="0" y="0" width="${instance.width}" height="${instance.height}" preserveAspectRatio="xMidYMid meet"/>`;
+  const { capability, frame } = selected;
+  if (capability.type === "frame_sequence") return `<image href="${assetUrl(capability.frames[frame])}" x="0" y="0" width="${instance.width}" height="${instance.height}" preserveAspectRatio="xMidYMid meet" data-asset-animation="${escapeHtml(capability.id)}" data-frame="${frame}"/>`;
+  const columns = capability.columns;
+  const rows = Math.ceil(capability.frame_count / columns);
+  const sourceX = frame % columns * capability.frame_width;
+  const sourceY = Math.floor(frame / columns) * capability.frame_height;
+  return `<svg x="0" y="0" width="${instance.width}" height="${instance.height}" viewBox="${sourceX} ${sourceY} ${capability.frame_width} ${capability.frame_height}" preserveAspectRatio="none" data-asset-animation="${escapeHtml(capability.id)}" data-frame="${frame}"><image href="${assetUrl(capability.path)}" x="0" y="0" width="${capability.frame_width * columns}" height="${capability.frame_height * rows}"/></svg>`;
+}
+
 function renderComposer() {
   const ready = Boolean(state.project?.scenes?.length);
   $("#scene-notice").textContent = ready ? `${state.project.name} · drag an asset onto the stage` : "Choose a project to compose a scene.";
@@ -250,7 +285,7 @@ function renderComposer() {
     const selection = selected ? `<rect class="selection-outline" x="0" y="0" width="${instance.width}" height="${instance.height}"/><circle class="resize-handle" data-resize="true" cx="${instance.width}" cy="${instance.height}" r="12"/>` : "";
     const centerX = instance.width / 2; const centerY = instance.height / 2;
     const scale = animation.scale === 1 ? "" : ` translate(${centerX} ${centerY}) scale(${animation.scale}) translate(${-centerX} ${-centerY})`;
-    return `<g class="scene-instance${selected ? " selected" : ""}" data-instance-id="${escapeHtml(instance.id)}" transform="translate(${instance.x + animation.x} ${instance.y + animation.y}) rotate(${instance.rotation + animation.rotation} ${centerX} ${centerY})${scale}" opacity="${opacity}"><image href="${assetUrl(asset.path)}" x="0" y="0" width="${instance.width}" height="${instance.height}" preserveAspectRatio="xMidYMid meet"/>${selection}</g>`;
+    return `<g class="scene-instance${selected ? " selected" : ""}" data-instance-id="${escapeHtml(instance.id)}" transform="translate(${instance.x + animation.x} ${instance.y + animation.y}) rotate(${instance.rotation + animation.rotation} ${centerX} ${centerY})${scale}" opacity="${opacity}">${instanceImageMarkup(instance, asset, scene)}${selection}</g>`;
   }).join("");
   stage.innerHTML = `${base}${backgroundSvg}${instanceSvg}`;
   stage.classList.toggle("animation-previewing", state.animationPreviewTime !== null);
@@ -271,17 +306,19 @@ function renderInstanceInspector() {
   });
   const preset = $("#animation-preset");
   const previousPreset = preset.value;
-  preset.innerHTML = availableAnimations(instance).map((name) => `<option value="${name}">${animationLabels[name]}</option>`).join("");
-  if (availableAnimations(instance).includes(previousPreset)) preset.value = previousPreset;
+  const choices = availableAnimations(instance);
+  preset.innerHTML = choices.map((choice) => `<option value="${escapeHtml(choice.value)}">${escapeHtml(choice.label)}</option>`).join("");
+  if (choices.some((choice) => choice.value === previousPreset)) preset.value = previousPreset;
   const animations = currentProjectScene().animations.filter((item) => item.target === instance.id);
   $("#animation-list").innerHTML = animations.map(animationCardTemplate).join("") || '<div class="empty-inspector">No animations on this object.</div>';
 }
 
 function animationCardTemplate(animation) {
-  const presets = availableAnimations(instanceById(animation.target)).map((name) => `<option value="${name}" ${animation.preset === name ? "selected" : ""}>${animationLabels[name]}</option>`).join("");
+  const choice = animationChoice(animation);
+  const presets = availableAnimations(instanceById(animation.target)).map((item) => `<option value="${escapeHtml(item.value)}" ${choice === item.value ? "selected" : ""}>${escapeHtml(item.label)}</option>`).join("");
   const easings = ["linear", "ease-in", "ease-out", "ease-in-out"].map((name) => `<option value="${name}" ${animation.easing === name ? "selected" : ""}>${name}</option>`).join("");
   const directions = ["left", "right", "up", "down"].map((name) => `<option value="${name}" ${animation.direction === name ? "selected" : ""}>${name}</option>`).join("");
-  return `<article class="animation-card" data-animation-id="${escapeHtml(animation.id)}"><div class="animation-card-head"><strong>${escapeHtml(animationLabels[animation.preset])}</strong><button data-delete-animation title="Delete animation">×</button></div><div class="animation-card-grid"><label>Preset<select data-animation-field="preset">${presets}</select></label><label>Direction<select data-animation-field="direction">${directions}</select></label><label>Delay<input data-animation-field="start_seconds" type="number" min="0" step="0.1" value="${animation.start_seconds}"></label><label>Duration<input data-animation-field="duration_seconds" type="number" min="0.1" step="0.1" value="${animation.duration_seconds}"></label><label>Easing<select data-animation-field="easing">${easings}</select></label><label class="visibility-control"><input data-animation-field="loop" type="checkbox" ${animation.loop ? "checked" : ""}> Loop</label></div></article>`;
+  return `<article class="animation-card" data-animation-id="${escapeHtml(animation.id)}"><div class="animation-card-head"><strong>${escapeHtml(animationDisplayLabel(animation))}</strong><button data-delete-animation title="Delete animation">×</button></div><div class="animation-card-grid"><label>Animation<select data-animation-field="choice">${presets}</select></label><label>Direction<select data-animation-field="direction">${directions}</select></label><label>Delay<input data-animation-field="start_seconds" type="number" min="0" step="0.1" value="${animation.start_seconds}"></label><label>Duration<input data-animation-field="duration_seconds" type="number" min="0.1" step="0.1" value="${animation.duration_seconds}"></label><label>Easing<select data-animation-field="easing">${easings}</select></label><label class="visibility-control"><input data-animation-field="loop" type="checkbox" ${animation.loop ? "checked" : ""}> Loop</label></div></article>`;
 }
 
 function registerProjectAsset(path) {
@@ -381,10 +418,28 @@ function addAnimation() {
   const duration = Number($("#animation-duration").value);
   const start = Number($("#animation-start").value);
   if (!(duration > 0) || start < 0) return toast("Animation delay must be zero or more and duration must be positive", true);
-  const id = uniqueId(`${instance.id}-${$("#animation-preset").value}`, new Set(scene.animations.map((item) => item.id)));
-  scene.animations.push({ id, target: instance.id, preset: $("#animation-preset").value, start_seconds: start, duration_seconds: duration, easing: $("#animation-easing").value, direction: $("#animation-direction").value, loop: $("#animation-loop").checked });
+  const choice = $("#animation-preset").value;
+  const assetAnimationId = choice.startsWith("asset:") ? choice.slice(6) : null;
+  const preset = assetAnimationId ? "asset" : choice;
+  const capability = state.project.assets.find((item) => item.id === instance.asset_id)?.capabilities?.animations?.find((item) => item.id === assetAnimationId);
+  const id = uniqueId(`${instance.id}-${assetAnimationId || preset}`, new Set(scene.animations.map((item) => item.id)));
+  const animation = { id, target: instance.id, preset, start_seconds: start, duration_seconds: duration, easing: $("#animation-easing").value, direction: $("#animation-direction").value, loop: assetAnimationId ? capability?.loop ?? true : $("#animation-loop").checked };
+  if (assetAnimationId) animation.asset_animation_id = assetAnimationId;
+  scene.animations.push(animation);
   renderComposer();
   toast("Animation added — preview or save the scene");
+}
+
+function applyAnimationChoiceDefaults() {
+  const instance = instanceById(state.selectedInstance);
+  const choice = $("#animation-preset").value;
+  if (!instance || !choice.startsWith("asset:")) return;
+  const capabilityId = choice.slice(6);
+  const capability = state.project.assets.find((item) => item.id === instance.asset_id)?.capabilities?.animations?.find((item) => item.id === capabilityId);
+  if (!capability) return;
+  const frames = capability.type === "sprite_sheet" ? capability.frame_count : capability.frames.length;
+  $("#animation-duration").value = Math.max(0.1, frames / capability.fps).toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+  $("#animation-loop").checked = capability.loop ?? true;
 }
 
 function editAnimation(event) {
@@ -401,6 +456,21 @@ function editAnimation(event) {
   }
   const field = event.target.dataset.animationField;
   if (!field) return;
+  if (field === "choice") {
+    const choice = event.target.value;
+    if (choice.startsWith("asset:")) {
+      animation.preset = "asset";
+      animation.asset_animation_id = choice.slice(6);
+      const instance = instanceById(animation.target);
+      const capability = state.project.assets.find((item) => item.id === instance.asset_id)?.capabilities?.animations?.find((item) => item.id === animation.asset_animation_id);
+      animation.loop = capability?.loop ?? true;
+    } else {
+      animation.preset = choice;
+      delete animation.asset_animation_id;
+    }
+    renderComposer();
+    return;
+  }
   animation[field] = field === "loop" ? event.target.checked : ["start_seconds", "duration_seconds"].includes(field) ? Number(event.target.value) : event.target.value;
   if (animation.start_seconds < 0) animation.start_seconds = 0;
   if (animation.duration_seconds <= 0) animation.duration_seconds = 0.1;
@@ -526,27 +596,56 @@ async function loadAssets() {
   try {
     const assets = await api("/api/assets");
     $("#asset-grid").innerHTML = assets.map((asset) => `<article class="asset-card"><div class="asset-icon">◇</div><h3>${escapeHtml(asset.path.split("/").pop())}</h3><p>${escapeHtml(asset.path)} · ${(asset.size / 1024).toFixed(1)} KB</p></article>`).join("") || '<div class="notice">No assets imported yet.</div>';
+    const visualAssets = (state.project?.assets || []).filter((asset) => ["character", "scene", "prop"].includes(asset.kind));
+    $("#capability-asset").innerHTML = '<option value="">Choose a project asset</option>' + visualAssets.map((asset) => `<option value="${escapeHtml(asset.id)}">${escapeHtml(asset.id)} · ${(asset.capabilities?.animations || []).length} animation${(asset.capabilities?.animations || []).length === 1 ? "" : "s"}</option>`).join("");
   } catch (error) { toast(error.message, true); }
 }
 
 async function importAsset() {
-  const file = $("#asset-file").files[0];
-  if (!file) return toast("Choose a file to import", true);
+  const files = [...$("#asset-file").files];
+  if (!files.length) return toast("Choose one or more files to import", true);
   const category = $("#asset-category").value;
   const button = $("#import-asset");
   button.disabled = true;
   try {
-    const imported = await api(`/api/assets/${category}?filename=${encodeURIComponent(file.name)}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file });
+    for (const file of files) {
+      const imported = await api(`/api/assets/${category}?filename=${encodeURIComponent(file.name)}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file });
+      if (state.project && ["audio", "music"].includes(category)) registerProjectAsset(imported.path);
+    }
     if (state.project && ["audio", "music"].includes(category)) {
-      registerProjectAsset(imported.path);
       await api(`/api/projects/${encodeURIComponent(state.projectName)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: state.project }) });
       renderScript();
     }
     $("#asset-file").value = "";
-    toast(`Imported ${file.name}`);
+    toast(`Imported ${files.length} asset${files.length === 1 ? "" : "s"}`);
     await loadAssets();
   } catch (error) { toast(error.message, true); }
   finally { button.disabled = false; }
+}
+
+async function attachCapabilities() {
+  if (!state.projectName) return toast("Open a project first", true);
+  const assetId = $("#capability-asset").value;
+  const file = $("#capability-file").files[0];
+  if (!assetId || !file) return toast("Choose a visual asset and manifest JSON", true);
+  try {
+    const manifest = JSON.parse(await file.text());
+    if (!manifest || !Array.isArray(manifest.animations)) throw new Error("Manifest must contain an animations list");
+    const asset = state.project.assets.find((item) => item.id === assetId);
+    const previous = asset.capabilities;
+    asset.capabilities = manifest;
+    try {
+      await api(`/api/projects/${encodeURIComponent(state.projectName)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: state.project }) });
+    } catch (error) {
+      if (previous === undefined) delete asset.capabilities;
+      else asset.capabilities = previous;
+      throw error;
+    }
+    $("#capability-file").value = "";
+    toast(`Attached ${(manifest.animations || []).length} animation capabilities to ${assetId}`);
+    await loadAssets();
+    renderComposer();
+  } catch (error) { toast(error.message, true); }
 }
 
 async function previewVoice() {
@@ -647,6 +746,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#instance-controls").addEventListener("input", editInstance);
   $("#instance-controls").addEventListener("click", (event) => { if (event.target.dataset.layer) changeLayer(event.target.dataset.layer); });
   $("#add-animation").addEventListener("click", addAnimation);
+  $("#animation-preset").addEventListener("change", applyAnimationChoiceDefaults);
   $("#preview-animations").addEventListener("click", previewAnimations);
   $("#animation-list").addEventListener("change", editAnimation);
   $("#animation-list").addEventListener("click", editAnimation);
@@ -657,6 +757,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#add-row").addEventListener("click", (event) => { if (event.target.dataset.add) addBlock(event.target.dataset.add); });
   $("#save-script").addEventListener("click", saveScript);
   $("#import-asset").addEventListener("click", importAsset);
+  $("#attach-capabilities").addEventListener("click", attachCapabilities);
   $("#asset-file").addEventListener("change", (event) => { const file = event.target.files[0]; if (file) $(".file-drop strong").textContent = file.name; });
   $("#preview-voice").addEventListener("click", previewVoice);
   $("#validate-project").addEventListener("click", validateProject);

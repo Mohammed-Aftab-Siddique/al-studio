@@ -139,6 +139,7 @@ class DialogueTimelineBuilder:
                             "animation_id": animation.animation_id,
                             "target": animation.target_instance_id,
                             "preset": animation.preset,
+                            "asset_animation_id": animation.asset_animation_id,
                             "loop": animation.loop,
                         },
                         track="visual",

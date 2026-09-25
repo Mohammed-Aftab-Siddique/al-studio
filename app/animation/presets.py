@@ -72,6 +72,8 @@ def evaluate_animation(animation: SceneAnimation, time_seconds: float) -> Animat
         return AnimationTransform(rotation=sign * 360.0 * progress)
     if preset == "shake":
         return AnimationTransform(x=18.0 * math.sin(8.0 * math.pi * progress))
+    if preset == "asset":
+        return AnimationTransform()
     raise ValueError(f"unsupported animation preset: {preset}")
 
 

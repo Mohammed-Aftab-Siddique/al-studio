@@ -4,7 +4,17 @@ import math
 from dataclasses import dataclass
 
 ANIMATION_PRESETS = frozenset(
-    {"fade-in", "fade-out", "slide-in", "bounce", "float", "pulse", "rotate", "shake"}
+    {
+        "fade-in",
+        "fade-out",
+        "slide-in",
+        "bounce",
+        "float",
+        "pulse",
+        "rotate",
+        "shake",
+        "asset",
+    }
 )
 ANIMATION_EASINGS = frozenset({"linear", "ease-in", "ease-out", "ease-in-out"})
 ANIMATION_DIRECTIONS = frozenset({"left", "right", "up", "down"})
@@ -89,6 +99,7 @@ class SceneAnimation:
     easing: str = "ease-in-out"
     direction: str = "left"
     loop: bool = False
+    asset_animation_id: str | None = None
 
     def __post_init__(self) -> None:
         _validate_identifier("animation_id", self.animation_id)
@@ -121,6 +132,12 @@ class SceneAnimation:
             )
         if not isinstance(self.loop, bool):
             raise TypeError("animation loop must be a boolean")
+        if self.preset == "asset":
+            if self.asset_animation_id is None:
+                raise ValueError("asset animation requires asset_animation_id")
+            _validate_identifier("asset_animation_id", self.asset_animation_id)
+        elif self.asset_animation_id is not None:
+            raise ValueError("universal preset must not define asset_animation_id")
 
 
 @dataclass(frozen=True, slots=True)

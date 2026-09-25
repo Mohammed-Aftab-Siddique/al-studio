@@ -67,9 +67,12 @@ def test_web_shell_and_static_assets_are_available(tmp_path: Path) -> None:
     assert "animation-preset" in home.text
     assert "timeline-visual" in home.text
     assert 'data-add="ambience"' in home.text
+    assert "attach-capabilities" in home.text
     assert "startRender" in script.text
     assert "previewAnimations" in script.text
     assert "sceneTimelineData" in script.text
+    assert "assetAnimationFrame" in script.text
+    assert "attachCapabilities" in script.text
 
 
 def test_project_creation_opening_and_validated_script_save(tmp_path: Path) -> None:
@@ -149,8 +152,29 @@ def test_scene_layout_can_be_saved_and_asset_previews_are_confined(tmp_path: Pat
     app = make_app(tmp_path)
     create_demo(app)
     imported = call(app, "POST", "/api/assets/characters?filename=hero.svg", content=b"<svg/>")
+    sheet = call(app, "POST", "/api/assets/characters?filename=hero-walk.png", content=b"png")
     project = call(app, "GET", "/api/projects/demo-story").json()["project"]
-    project["assets"].append({"id": "hero", "kind": "character", "path": "characters/hero.svg"})
+    project["assets"].append(
+        {
+            "id": "hero",
+            "kind": "character",
+            "path": "characters/hero.svg",
+            "capabilities": {
+                "animations": [
+                    {
+                        "id": "walk",
+                        "type": "sprite_sheet",
+                        "path": sheet.json()["path"],
+                        "frame_width": 64,
+                        "frame_height": 96,
+                        "frame_count": 4,
+                        "columns": 2,
+                        "fps": 8,
+                    }
+                ]
+            },
+        }
+    )
     project["scenes"][0]["instances"] = [
         {
             "id": "hero-left",
@@ -175,7 +199,18 @@ def test_scene_layout_can_be_saved_and_asset_previews_are_confined(tmp_path: Pat
             "easing": "ease-out",
             "direction": "left",
             "loop": False,
-        }
+        },
+        {
+            "id": "hero-walk",
+            "target": "hero-left",
+            "preset": "asset",
+            "asset_animation_id": "walk",
+            "start_seconds": 0,
+            "duration_seconds": 2,
+            "easing": "linear",
+            "direction": "left",
+            "loop": True,
+        },
     ]
 
     saved = call(app, "PUT", "/api/projects/demo-story", json={"content": project})
@@ -186,6 +221,7 @@ def test_scene_layout_can_be_saved_and_asset_previews_are_confined(tmp_path: Pat
     assert saved.json() == {"status": "saved"}
     assert reopened["scenes"][0]["instances"][0]["x"] == 80
     assert reopened["scenes"][0]["animations"][0]["preset"] == "slide-in"
+    assert reopened["scenes"][0]["animations"][1]["asset_animation_id"] == "walk"
     assert preview.content == b"<svg/>"
     assert escaped.status_code in {400, 404}
 

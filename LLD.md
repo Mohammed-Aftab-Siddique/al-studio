@@ -179,8 +179,34 @@ flowchart LR
 
 Clips may overlap on the same instance; translation and rotation are added,
 scale and opacity are multiplied. The available universal presets are fade
-in/out, slide in, bounce, float, pulse, rotate, and shake. The next timeline
-slice will make parallel visual, dialogue, caption, and audio tracks explicit.
+in/out, slide in, bounce, float, pulse, rotate, and shake. Parallel visual,
+dialogue, caption, and audio tracks share the same scene-local clock.
+
+### Asset capability manifests
+
+Visual asset entries may declare named sprite-sheet and frame-sequence
+capabilities. The project loader validates manifest shape, safe asset-relative
+paths, frame metadata, FPS, and unique IDs. Scene asset clips are then checked
+against the selected instance's asset, preventing a character from selecting
+an animation it does not own.
+
+```mermaid
+flowchart LR
+    files[Imported sprite sheet<br/>or ordered frame files]
+    manifest[Asset capability manifest<br/>ID + format + FPS + loop]
+    files --> validator[Safe path and image validation]
+    manifest --> validator
+    validator --> dropdown[Asset-specific animation dropdown]
+    dropdown --> clip[SceneAnimation<br/>preset: asset]
+    clip --> browser[Browser frame selector]
+    clip --> renderer[SVG frame selector]
+    browser --> parity[Matching deterministic frame]
+    renderer --> parity
+```
+
+Universal transform presets remain available alongside declared asset motion.
+The capability's frame count and FPS provide a natural duration default, while
+each scene clip retains editable delay, duration, and loop settings.
 
 ### Proposed responsibility boundaries
 

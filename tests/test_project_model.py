@@ -8,6 +8,7 @@ from app.project import (
     ProjectAssetManager,
     ProjectConfig,
     ProjectConfigError,
+    capability_asset_key,
 )
 
 ASSET_ROOT = Path("assets")
@@ -188,3 +189,142 @@ def test_asset_manager_reports_invalid_json_clearly(tmp_path: Path) -> None:
 
     with pytest.raises(ProjectConfigError, match="invalid JSON"):
         ProjectAssetManager(tmp_path).load_project(project_path)
+
+
+def test_asset_capability_manifest_resolves_sprite_sheet_and_frame_sequence(
+    tmp_path: Path,
+) -> None:
+    for relative in (
+        "characters/hero.svg",
+        "characters/walk.png",
+        "characters/blink-0.png",
+        "characters/blink-1.png",
+    ):
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"image")
+    project = ProjectConfig.from_dict(
+        {
+            "schema_version": 1,
+            "name": "capabilities",
+            "assets": [
+                {
+                    "id": "hero",
+                    "kind": "character",
+                    "path": "characters/hero.svg",
+                    "capabilities": {
+                        "animations": [
+                            {
+                                "id": "walk",
+                                "type": "sprite_sheet",
+                                "path": "characters/walk.png",
+                                "frame_width": 64,
+                                "frame_height": 96,
+                                "frame_count": 4,
+                                "columns": 2,
+                                "fps": 8,
+                            },
+                            {
+                                "id": "blink",
+                                "type": "frame_sequence",
+                                "frames": [
+                                    "characters/blink-0.png",
+                                    "characters/blink-1.png",
+                                ],
+                                "fps": 4,
+                                "loop": False,
+                            },
+                        ]
+                    },
+                }
+            ],
+            "characters": [],
+            "scenes": [],
+        }
+    )
+
+    resolved = ProjectAssetManager(tmp_path).validate_assets(project)
+
+    assert project.assets[0].animations[0].total_frames == 4
+    assert resolved[capability_asset_key("hero", "walk")].name == "walk.png"
+    assert resolved[capability_asset_key("hero", "blink", 1)].name == "blink-1.png"
+
+
+def test_asset_capability_paths_and_scene_references_are_validated() -> None:
+    with pytest.raises(ProjectConfigError, match="must stay within the asset root"):
+        ProjectConfig.from_dict(
+            {
+                "schema_version": 1,
+                "name": "unsafe",
+                "assets": [
+                    {
+                        "id": "room",
+                        "kind": "scene",
+                        "path": "scenes/room.svg",
+                    },
+                    {
+                        "id": "hero",
+                        "kind": "character",
+                        "path": "characters/hero.svg",
+                        "capabilities": {
+                            "animations": [
+                                {
+                                    "id": "walk",
+                                    "type": "frame_sequence",
+                                    "frames": ["../outside.png"],
+                                    "fps": 8,
+                                }
+                            ]
+                        },
+                    },
+                ],
+                "characters": [],
+                "scenes": [],
+            }
+        )
+
+    with pytest.raises(ProjectConfigError, match="asset hero does not support animation: missing"):
+        ProjectConfig.from_dict(
+            {
+                "schema_version": 1,
+                "name": "unknown-capability",
+                "assets": [
+                    {
+                        "id": "room",
+                        "kind": "scene",
+                        "path": "scenes/room.svg",
+                    },
+                    {
+                        "id": "hero",
+                        "kind": "character",
+                        "path": "characters/hero.svg",
+                    },
+                ],
+                "characters": [],
+                "scenes": [
+                    {
+                        "id": "opening",
+                        "background_asset_id": "room",
+                        "instances": [
+                            {
+                                "id": "hero-left",
+                                "asset_id": "hero",
+                                "x": 0,
+                                "y": 0,
+                                "width": 100,
+                                "height": 100,
+                            }
+                        ],
+                        "animations": [
+                            {
+                                "id": "hero-missing-animation",
+                                "target": "hero-left",
+                                "preset": "asset",
+                                "asset_animation_id": "missing",
+                                "duration_seconds": 1,
+                            }
+                        ],
+                    }
+                ],
+            }
+        )

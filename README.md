@@ -117,6 +117,60 @@ Importing adds a reusable file to the library. Open **Scene** to place the
 visual asset in the selected project's composition; audio assets remain
 available to the underlying project format for future audio-track controls.
 
+### Add Sprite-Sheet or Frame-Sequence Capabilities
+
+An asset capability manifest tells Al Studio which animations belong to one
+character, prop, or scene asset. This keeps the Scene animation dropdown
+asset-specific: a cat can expose `blink` and `sleep`, while a person can expose
+`walk` and `wave`.
+
+1. Use **Assets** to import the sprite sheet or all frame-sequence images.
+   Multiple files can be selected in one import.
+2. Place and save the visual asset in a project so it is registered in
+   `project.json`.
+3. Create a local JSON manifest containing an `animations` list.
+4. In **Assets → Animation capabilities**, choose the visual asset, select the
+   manifest, and choose **Attach manifest**.
+5. Return to **Scene**, select an instance of that asset, and choose its named
+   animation from the **Animation** dropdown.
+
+Example manifest containing both supported formats:
+
+```json
+{
+  "animations": [
+    {
+      "id": "walk",
+      "type": "sprite_sheet",
+      "path": "characters/alex-walk.png",
+      "frame_width": 256,
+      "frame_height": 512,
+      "frame_count": 8,
+      "columns": 4,
+      "fps": 12,
+      "loop": true
+    },
+    {
+      "id": "wave",
+      "type": "frame_sequence",
+      "frames": [
+        "characters/alex-wave-01.png",
+        "characters/alex-wave-02.png",
+        "characters/alex-wave-03.png"
+      ],
+      "fps": 8,
+      "loop": false
+    }
+  ]
+}
+```
+
+All manifest paths are relative to `assets/` and cannot be absolute or contain
+`..`. Referenced files must be SVG, PNG, or WebP and must already exist. IDs
+must be unique within the asset. Sprite sheets additionally require positive
+frame dimensions, frame count, and column count. The browser derives the
+natural cycle duration from frame count ÷ FPS; it remains editable per scene.
+
 ### Compose a Scene in the Browser
 
 1. Select a project and open **Scene**.
@@ -152,6 +206,11 @@ not detach its motion. The browser preview and SVG frame renderer use the same
 deterministic preset equations and scene-local time; unchanged inputs render
 the same result. Multiple animations can target one object and their position,
 rotation, scale, and opacity effects are combined.
+
+Asset-specific clips use `"preset": "asset"` and identify the declared
+capability with `asset_animation_id`. Universal motion and asset-frame playback
+can run together; the browser preview and final SVG renderer select frames with
+the same deterministic FPS calculation.
 
 ### Write a Story in the Browser
 

@@ -14,6 +14,7 @@ CURRENT_SCHEMA_VERSION = 1
 ASSET_KINDS = frozenset({"character", "scene", "prop", "audio", "music"})
 IMAGE_EXTENSIONS = frozenset({".png", ".svg", ".webp"})
 AUDIO_EXTENSIONS = frozenset({".wav", ".mp3", ".ogg"})
+ASSET_ANIMATION_TYPES = frozenset({"sprite_sheet", "frame_sequence"})
 
 
 class ProjectConfigError(ValueError):
@@ -29,6 +30,71 @@ def _required_string(data: dict[str, Any], field_name: str) -> str:
     if not isinstance(value, str) or not value.strip() or value != value.strip():
         raise ProjectConfigError(f"{field_name} must be a non-empty trimmed string")
     return value
+
+
+def _validate_asset_path(path: str, label: str = "asset path") -> None:
+    _required_string({"path": path}, "path")
+    candidate = PurePosixPath(path)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise ProjectConfigError(f"{label} must stay within the asset root")
+
+
+def capability_asset_key(asset_id: str, animation_id: str, frame: int = 0) -> str:
+    """Return the internal lookup key for a resolved capability image."""
+    return f"@animation:{asset_id}:{animation_id}:{frame}"
+
+
+@dataclass(frozen=True, slots=True)
+class AssetAnimationCapability:
+    """A visual animation declared by an asset capability manifest."""
+
+    animation_id: str
+    animation_type: str
+    fps: float
+    loop: bool = True
+    path: str | None = None
+    frames: tuple[str, ...] = ()
+    frame_width: int | None = None
+    frame_height: int | None = None
+    frame_count: int | None = None
+    columns: int | None = None
+
+    def __post_init__(self) -> None:
+        _required_string({"animation_id": self.animation_id}, "animation_id")
+        if self.animation_type not in ASSET_ANIMATION_TYPES:
+            raise ProjectConfigError(
+                f"asset animation type must be one of: {', '.join(sorted(ASSET_ANIMATION_TYPES))}"
+            )
+        if not isinstance(self.fps, (int, float)) or isinstance(self.fps, bool) or self.fps <= 0:
+            raise ProjectConfigError("asset animation fps must be a positive number")
+        if not isinstance(self.loop, bool):
+            raise ProjectConfigError("asset animation loop must be a boolean")
+        if self.animation_type == "sprite_sheet":
+            if self.path is None:
+                raise ProjectConfigError("sprite-sheet animation requires path")
+            _validate_asset_path(self.path, "sprite-sheet path")
+            for field_name, value in (
+                ("frame_width", self.frame_width),
+                ("frame_height", self.frame_height),
+                ("frame_count", self.frame_count),
+                ("columns", self.columns),
+            ):
+                if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+                    raise ProjectConfigError(
+                        f"sprite-sheet {field_name} must be a positive integer"
+                    )
+            assert self.columns is not None and self.frame_count is not None
+            if self.columns > self.frame_count:
+                raise ProjectConfigError("sprite-sheet columns must not exceed frame_count")
+        else:
+            if not self.frames:
+                raise ProjectConfigError("frame-sequence animation requires frames")
+            for frame in self.frames:
+                _validate_asset_path(frame, "frame-sequence path")
+
+    @property
+    def total_frames(self) -> int:
+        return self.frame_count or len(self.frames)
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,15 +118,18 @@ class AssetConfig:
     asset_id: str
     kind: str
     path: str
+    animations: tuple[AssetAnimationCapability, ...] = ()
 
     def __post_init__(self) -> None:
         _required_string({"asset_id": self.asset_id}, "asset_id")
         if self.kind not in ASSET_KINDS:
             raise ProjectConfigError(f"asset kind must be one of: {', '.join(sorted(ASSET_KINDS))}")
-        _required_string({"path": self.path}, "path")
-        candidate = PurePosixPath(self.path)
-        if candidate.is_absolute() or ".." in candidate.parts:
-            raise ProjectConfigError("asset path must stay within the asset root")
+        _validate_asset_path(self.path)
+        if self.animations and self.kind not in {"character", "scene", "prop"}:
+            raise ProjectConfigError("only visual assets can declare animation capabilities")
+        animation_ids = tuple(animation.animation_id for animation in self.animations)
+        if len(animation_ids) != len(set(animation_ids)):
+            raise ProjectConfigError("asset animation identifiers must be unique")
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +163,18 @@ class ProjectConfig:
                 if asset.kind not in {"character", "scene", "prop"}:
                     raise ProjectConfigError(
                         f"instance asset {instance.asset_id} must be a visual asset"
+                    )
+            instances = {instance.instance_id: instance for instance in scene.instances}
+            for animation in scene.animations:
+                if animation.preset != "asset":
+                    continue
+                instance = instances[animation.target_instance_id]
+                asset = asset_by_id[instance.asset_id]
+                capability_ids = {capability.animation_id for capability in asset.animations}
+                if animation.asset_animation_id not in capability_ids:
+                    raise ProjectConfigError(
+                        f"asset {asset.asset_id} does not support animation: "
+                        f"{animation.asset_animation_id}"
                     )
 
     @staticmethod
@@ -154,10 +235,38 @@ class ProjectConfig:
 
     @staticmethod
     def _asset_from_dict(data: dict[str, Any]) -> AssetConfig:
+        capabilities = data.get("capabilities", {})
+        if not isinstance(capabilities, dict):
+            raise ProjectConfigError("asset capabilities must be an object")
+        animations = capabilities.get("animations", [])
+        if not isinstance(animations, list) or not all(
+            isinstance(item, dict) for item in animations
+        ):
+            raise ProjectConfigError("asset capability animations must be a list of objects")
         return AssetConfig(
             asset_id=_required_string(data, "id"),
             kind=_required_string(data, "kind"),
             path=_required_string(data, "path"),
+            animations=tuple(ProjectConfig._asset_animation_from_dict(item) for item in animations),
+        )
+
+    @staticmethod
+    def _asset_animation_from_dict(data: dict[str, Any]) -> AssetAnimationCapability:
+        animation_type = _required_string(data, "type")
+        frames = data.get("frames", [])
+        if not isinstance(frames, list) or not all(isinstance(item, str) for item in frames):
+            raise ProjectConfigError("frame-sequence frames must be a list of paths")
+        return AssetAnimationCapability(
+            animation_id=_required_string(data, "id"),
+            animation_type=animation_type,
+            fps=cast(float, data.get("fps")),
+            loop=data.get("loop", True),
+            path=data.get("path"),
+            frames=tuple(frames),
+            frame_width=data.get("frame_width"),
+            frame_height=data.get("frame_height"),
+            frame_count=data.get("frame_count"),
+            columns=data.get("columns"),
         )
 
     @staticmethod
@@ -215,6 +324,7 @@ class ProjectConfig:
             easing=data.get("easing", "ease-in-out"),
             direction=data.get("direction", "left"),
             loop=data.get("loop", False),
+            asset_animation_id=data.get("asset_animation_id"),
         )
 
     @staticmethod
@@ -278,4 +388,29 @@ class ProjectAssetManager:
         return candidate
 
     def validate_assets(self, project: ProjectConfig) -> dict[str, Path]:
-        return {asset.asset_id: self.resolve_asset(asset) for asset in project.assets}
+        resolved = {asset.asset_id: self.resolve_asset(asset) for asset in project.assets}
+        for asset in project.assets:
+            for animation in asset.animations:
+                paths = (
+                    (animation.path,)
+                    if animation.animation_type == "sprite_sheet"
+                    else animation.frames
+                )
+                for index, relative in enumerate(paths):
+                    if relative is None:
+                        continue
+                    candidate = (self.asset_root / relative).resolve()
+                    if not candidate.is_relative_to(self.asset_root):
+                        raise AssetResolutionError(
+                            f"animation asset path escapes asset root: {relative}"
+                        )
+                    if not candidate.is_file():
+                        raise AssetResolutionError(f"animation asset file not found: {relative}")
+                    if candidate.suffix.lower() not in IMAGE_EXTENSIONS:
+                        raise AssetResolutionError(
+                            f"animation asset has incompatible extension: {relative}"
+                        )
+                    resolved[
+                        capability_asset_key(asset.asset_id, animation.animation_id, index)
+                    ] = candidate
+        return resolved
