@@ -133,6 +133,26 @@ independent scene instance: the same reusable asset can be placed more than
 once with different transforms. Older `prop_asset_ids` projects are converted
 to explicit instances when their scene is edited and saved.
 
+### Animate Objects in the Browser
+
+1. Select a placed object on the **Scene** stage.
+2. In **Animation**, choose a preset: fade in/out, slide in, bounce, float,
+   pulse, rotate, or shake. Scene/background assets expose the applicable
+   fade, slide, and pulse subset.
+3. Set the delay and duration in seconds, direction, easing curve, and whether
+   the motion loops. Choose **Add animation**.
+4. Use **Preview scene animations** to play every animation in the selected
+   scene together. Choose it again to stop the preview.
+5. Edit or delete animation cards beneath the controls, then choose
+   **Save scene**.
+
+Animations are stored in the scene's `animations` array in `project.json`.
+Each entry targets a scene-instance ID, so moving or resizing the object does
+not detach its motion. The browser preview and SVG frame renderer use the same
+deterministic preset equations and scene-local time; unchanged inputs render
+the same result. Multiple animations can target one object and their position,
+rotation, scale, and opacity effects are combined.
+
 ### Write a Story in the Browser
 
 Open **Script** after selecting a project. The editor displays one tab for
@@ -278,7 +298,44 @@ Create `projects/my-story/project.json`:
     {
       "id": "room",
       "background_asset_id": "room",
-      "prop_asset_ids": ["plant"],
+      "instances": [
+        {
+          "id": "alex-left",
+          "asset_id": "alex-visual",
+          "x": 100,
+          "y": 190,
+          "width": 280,
+          "height": 460,
+          "rotation": 0,
+          "opacity": 1,
+          "z_index": 1,
+          "visible": true
+        },
+        {
+          "id": "plant-right",
+          "asset_id": "plant",
+          "x": 1020,
+          "y": 430,
+          "width": 140,
+          "height": 205,
+          "rotation": 0,
+          "opacity": 1,
+          "z_index": 2,
+          "visible": true
+        }
+      ],
+      "animations": [
+        {
+          "id": "alex-enter",
+          "target": "alex-left",
+          "preset": "slide-in",
+          "start_seconds": 0,
+          "duration_seconds": 1.2,
+          "easing": "ease-out",
+          "direction": "left",
+          "loop": false
+        }
+      ],
       "camera": {"x": 0, "y": 0, "zoom": 1.0}
     }
   ],

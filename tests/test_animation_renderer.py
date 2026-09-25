@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -7,6 +8,7 @@ import soundfile as sf
 from app.animation import CharacterState, FrameRenderer
 from app.audio.voice import VoiceEngine
 from app.project import ProjectAssetManager, ProjectConfig
+from app.scenes import SceneAnimation
 from app.script import DialogueTimelineBuilder, TimelineEvent, load_script
 
 
@@ -124,3 +126,14 @@ def test_frame_renderer_honors_instance_transform_layer_and_character_placement(
     assert 'data-instance="cat-right"' in contents
     assert 'opacity="0.8"' in contents
     assert contents.index('data-instance="hero-left"') < contents.index('data-instance="cat-right"')
+
+    animation = SceneAnimation("hero-enter", "hero-left", "slide-in", 0, 1, "linear", "left", False)
+    animated_scene = replace(project.scenes[0], animations=(animation,))
+    animated_project = replace(project, scenes=(animated_scene,))
+    animated_frame = FrameRenderer(animated_project, assets).render_frame(
+        timeline, 0.5, tmp_path / "animated.svg"
+    )
+    animated_contents = animated_frame.path.read_text(encoding="utf-8")
+
+    assert 'data-instance="hero-left"' in animated_contents
+    assert 'transform="translate(-10.0 170.0)' in animated_contents

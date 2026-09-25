@@ -1,6 +1,6 @@
 "use strict";
 
-const state = { projectName: "", project: null, script: null, scene: 0, composerScene: 0, selectedInstance: "", composerAssets: [], pointerDrag: null, jobTimer: null };
+const state = { projectName: "", project: null, script: null, scene: 0, composerScene: 0, selectedInstance: "", composerAssets: [], pointerDrag: null, animationPreviewTime: null, animationPreviewFrame: null, jobTimer: null };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const titles = { projects: "Projects", scene: "Scene composer", script: "Script editor", assets: "Asset library", voice: "Voice lab", render: "Render desk" };
@@ -47,6 +47,9 @@ async function loadProjects(selectName = state.projectName) {
 async function openProject(name, destination = "script") {
   if (!name) return;
   try {
+    if (state.animationPreviewFrame !== null) cancelAnimationFrame(state.animationPreviewFrame);
+    state.animationPreviewFrame = null;
+    state.animationPreviewTime = null;
     const data = await api(`/api/projects/${encodeURIComponent(name)}`);
     state.projectName = name;
     state.project = data.project;
@@ -98,6 +101,7 @@ function uniqueId(base, existing) {
 function normalizeSceneInstances(scene) {
   if (!scene) return;
   scene.instances ||= [];
+  scene.animations ||= [];
   const ids = new Set(scene.instances.map((item) => item.id));
   const placedAssets = new Set(scene.instances.map((item) => item.asset_id));
   (scene.prop_asset_ids || []).forEach((assetId, index) => {
@@ -130,6 +134,50 @@ function instanceById(id) {
   return currentProjectScene()?.instances?.find((instance) => instance.id === id);
 }
 
+const animationLabels = { "fade-in": "Fade in", "fade-out": "Fade out", "slide-in": "Slide in", bounce: "Bounce", float: "Float", pulse: "Pulse", rotate: "Rotate", shake: "Shake" };
+
+function availableAnimations(instance) {
+  const asset = state.project?.assets?.find((item) => item.id === instance?.asset_id);
+  if (asset?.kind === "scene") return ["fade-in", "fade-out", "slide-in", "pulse"];
+  return Object.keys(animationLabels);
+}
+
+function easeAnimation(progress, easing) {
+  if (easing === "linear") return progress;
+  if (easing === "ease-in") return progress * progress;
+  if (easing === "ease-out") return 1 - (1 - progress) ** 2;
+  return progress < 0.5 ? 2 * progress * progress : 1 - (-2 * progress + 2) ** 2 / 2;
+}
+
+function evaluateAnimationClip(animation, time) {
+  let progress = (time - animation.start_seconds) / animation.duration_seconds;
+  if (animation.loop && progress >= 0) progress %= 1;
+  else progress = Math.max(0, Math.min(1, progress));
+  progress = easeAnimation(progress, animation.easing);
+  if (animation.preset === "fade-in") return { x: 0, y: 0, scale: 1, rotation: 0, opacity: progress };
+  if (animation.preset === "fade-out") return { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 - progress };
+  if (animation.preset === "slide-in") {
+    const distance = 180 * (1 - progress);
+    const offset = { left: [-distance, 0], right: [distance, 0], up: [0, -distance], down: [0, distance] }[animation.direction];
+    return { x: offset[0], y: offset[1], scale: 1, rotation: 0, opacity: 1 };
+  }
+  if (animation.preset === "bounce") return { x: 0, y: -55 * Math.sin(Math.PI * progress), scale: 1, rotation: 0, opacity: 1 };
+  if (animation.preset === "float") return { x: 0, y: -24 * Math.sin(2 * Math.PI * progress), scale: 1, rotation: 0, opacity: 1 };
+  if (animation.preset === "pulse") return { x: 0, y: 0, scale: 1 + 0.14 * Math.sin(Math.PI * progress), rotation: 0, opacity: 1 };
+  if (animation.preset === "rotate") return { x: 0, y: 0, scale: 1, rotation: (animation.direction === "left" || animation.direction === "up" ? -1 : 1) * 360 * progress, opacity: 1 };
+  if (animation.preset === "shake") return { x: 18 * Math.sin(8 * Math.PI * progress), y: 0, scale: 1, rotation: 0, opacity: 1 };
+  return { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 };
+}
+
+function evaluateInstanceAnimations(instanceId, animations, time) {
+  return animations.filter((item) => item.target === instanceId).reduce((combined, item) => {
+    const current = evaluateAnimationClip(item, time);
+    combined.x += current.x; combined.y += current.y; combined.scale *= current.scale;
+    combined.rotation += current.rotation; combined.opacity *= current.opacity;
+    return combined;
+  }, { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 });
+}
+
 function renderComposer() {
   const ready = Boolean(state.project?.scenes?.length);
   $("#scene-notice").textContent = ready ? `${state.project.name} · drag an asset onto the stage` : "Choose a project to compose a scene.";
@@ -147,11 +195,15 @@ function renderComposer() {
     const asset = state.project.assets.find((item) => item.id === instance.asset_id);
     if (!asset) return "";
     const selected = instance.id === state.selectedInstance;
-    const opacity = instance.visible ? instance.opacity : 0.2;
+    const animation = state.animationPreviewTime === null ? { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 } : evaluateInstanceAnimations(instance.id, scene.animations, state.animationPreviewTime);
+    const opacity = instance.visible ? instance.opacity * animation.opacity : 0.2;
     const selection = selected ? `<rect class="selection-outline" x="0" y="0" width="${instance.width}" height="${instance.height}"/><circle class="resize-handle" data-resize="true" cx="${instance.width}" cy="${instance.height}" r="12"/>` : "";
-    return `<g class="scene-instance${selected ? " selected" : ""}" data-instance-id="${escapeHtml(instance.id)}" transform="translate(${instance.x} ${instance.y}) rotate(${instance.rotation} ${instance.width / 2} ${instance.height / 2})" opacity="${opacity}"><image href="${assetUrl(asset.path)}" x="0" y="0" width="${instance.width}" height="${instance.height}" preserveAspectRatio="xMidYMid meet"/>${selection}</g>`;
+    const centerX = instance.width / 2; const centerY = instance.height / 2;
+    const scale = animation.scale === 1 ? "" : ` translate(${centerX} ${centerY}) scale(${animation.scale}) translate(${-centerX} ${-centerY})`;
+    return `<g class="scene-instance${selected ? " selected" : ""}" data-instance-id="${escapeHtml(instance.id)}" transform="translate(${instance.x + animation.x} ${instance.y + animation.y}) rotate(${instance.rotation + animation.rotation} ${centerX} ${centerY})${scale}" opacity="${opacity}"><image href="${assetUrl(asset.path)}" x="0" y="0" width="${instance.width}" height="${instance.height}" preserveAspectRatio="xMidYMid meet"/>${selection}</g>`;
   }).join("");
   stage.innerHTML = `${base}${backgroundSvg}${instanceSvg}`;
+  stage.classList.toggle("animation-previewing", state.animationPreviewTime !== null);
   renderInstanceInspector();
 }
 
@@ -166,6 +218,19 @@ function renderInstanceInspector() {
     if (field === "visible") input.checked = instance.visible;
     else input.value = instance[field];
   });
+  const preset = $("#animation-preset");
+  const previousPreset = preset.value;
+  preset.innerHTML = availableAnimations(instance).map((name) => `<option value="${name}">${animationLabels[name]}</option>`).join("");
+  if (availableAnimations(instance).includes(previousPreset)) preset.value = previousPreset;
+  const animations = currentProjectScene().animations.filter((item) => item.target === instance.id);
+  $("#animation-list").innerHTML = animations.map(animationCardTemplate).join("") || '<div class="empty-inspector">No animations on this object.</div>';
+}
+
+function animationCardTemplate(animation) {
+  const presets = availableAnimations(instanceById(animation.target)).map((name) => `<option value="${name}" ${animation.preset === name ? "selected" : ""}>${animationLabels[name]}</option>`).join("");
+  const easings = ["linear", "ease-in", "ease-out", "ease-in-out"].map((name) => `<option value="${name}" ${animation.easing === name ? "selected" : ""}>${name}</option>`).join("");
+  const directions = ["left", "right", "up", "down"].map((name) => `<option value="${name}" ${animation.direction === name ? "selected" : ""}>${name}</option>`).join("");
+  return `<article class="animation-card" data-animation-id="${escapeHtml(animation.id)}"><div class="animation-card-head"><strong>${escapeHtml(animationLabels[animation.preset])}</strong><button data-delete-animation title="Delete animation">×</button></div><div class="animation-card-grid"><label>Preset<select data-animation-field="preset">${presets}</select></label><label>Direction<select data-animation-field="direction">${directions}</select></label><label>Delay<input data-animation-field="start_seconds" type="number" min="0" step="0.1" value="${animation.start_seconds}"></label><label>Duration<input data-animation-field="duration_seconds" type="number" min="0.1" step="0.1" value="${animation.duration_seconds}"></label><label>Easing<select data-animation-field="easing">${easings}</select></label><label class="visibility-control"><input data-animation-field="loop" type="checkbox" ${animation.loop ? "checked" : ""}> Loop</label></div></article>`;
 }
 
 function registerProjectAsset(path) {
@@ -236,6 +301,7 @@ function editInstance(event) {
   const instance = instanceById(state.selectedInstance);
   if (!instance) return;
   const field = event.target.dataset.instanceField;
+  if (!field) return;
   instance[field] = field === "visible" ? event.target.checked : Number(event.target.value);
   if (["width", "height"].includes(field)) instance[field] = Math.max(1, instance[field]);
   if (field === "opacity") instance.opacity = Math.max(0, Math.min(1, instance.opacity));
@@ -257,10 +323,68 @@ function changeLayer(direction) {
   renderComposer();
 }
 
+function addAnimation() {
+  const scene = currentProjectScene();
+  const instance = instanceById(state.selectedInstance);
+  if (!scene || !instance) return;
+  const duration = Number($("#animation-duration").value);
+  const start = Number($("#animation-start").value);
+  if (!(duration > 0) || start < 0) return toast("Animation delay must be zero or more and duration must be positive", true);
+  const id = uniqueId(`${instance.id}-${$("#animation-preset").value}`, new Set(scene.animations.map((item) => item.id)));
+  scene.animations.push({ id, target: instance.id, preset: $("#animation-preset").value, start_seconds: start, duration_seconds: duration, easing: $("#animation-easing").value, direction: $("#animation-direction").value, loop: $("#animation-loop").checked });
+  renderComposer();
+  toast("Animation added — preview or save the scene");
+}
+
+function editAnimation(event) {
+  if (event.type === "click" && event.target.dataset.deleteAnimation === undefined) return;
+  const card = event.target.closest("[data-animation-id]");
+  if (!card) return;
+  const scene = currentProjectScene();
+  const animation = scene.animations.find((item) => item.id === card.dataset.animationId);
+  if (!animation) return;
+  if (event.target.dataset.deleteAnimation !== undefined) {
+    scene.animations = scene.animations.filter((item) => item.id !== animation.id);
+    renderComposer();
+    return;
+  }
+  const field = event.target.dataset.animationField;
+  if (!field) return;
+  animation[field] = field === "loop" ? event.target.checked : ["start_seconds", "duration_seconds"].includes(field) ? Number(event.target.value) : event.target.value;
+  if (animation.start_seconds < 0) animation.start_seconds = 0;
+  if (animation.duration_seconds <= 0) animation.duration_seconds = 0.1;
+  renderComposer();
+}
+
+function stopAnimationPreview() {
+  if (state.animationPreviewFrame !== null) cancelAnimationFrame(state.animationPreviewFrame);
+  state.animationPreviewFrame = null;
+  state.animationPreviewTime = null;
+  $("#preview-animations").textContent = "▶";
+  renderComposer();
+}
+
+function previewAnimations() {
+  const scene = currentProjectScene();
+  if (!scene?.animations?.length) return toast("Add an animation to preview", true);
+  if (state.animationPreviewTime !== null) { stopAnimationPreview(); return; }
+  const duration = Math.min(8, Math.max(2, ...scene.animations.map((item) => item.start_seconds + item.duration_seconds * (item.loop ? 2 : 1))));
+  const started = performance.now();
+  $("#preview-animations").textContent = "■";
+  const tick = (now) => {
+    state.animationPreviewTime = (now - started) / 1000;
+    renderComposer();
+    if (state.animationPreviewTime >= duration) stopAnimationPreview();
+    else state.animationPreviewFrame = requestAnimationFrame(tick);
+  };
+  state.animationPreviewFrame = requestAnimationFrame(tick);
+}
+
 function deleteSelectedInstance() {
   const scene = currentProjectScene();
   if (!scene || !state.selectedInstance) return;
   scene.instances = scene.instances.filter((instance) => instance.id !== state.selectedInstance);
+  scene.animations = scene.animations.filter((animation) => animation.target !== state.selectedInstance);
   state.selectedInstance = "";
   renderComposer();
 }
@@ -441,7 +565,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#refresh-projects").addEventListener("click", () => loadProjects().catch((error) => toast(error.message, true)));
   $("#project-grid").addEventListener("click", (event) => { const card = event.target.closest("[data-project]"); if (card) openProject(card.dataset.project); });
   $("#project-select").addEventListener("change", (event) => openProject(event.target.value));
-  $("#composer-scene-tabs").addEventListener("click", (event) => { if (event.target.dataset.composerScene !== undefined) { state.composerScene = Number(event.target.dataset.composerScene); state.selectedInstance = ""; renderComposer(); } });
+  $("#composer-scene-tabs").addEventListener("click", (event) => { if (event.target.dataset.composerScene !== undefined) { if (state.animationPreviewTime !== null) stopAnimationPreview(); state.composerScene = Number(event.target.dataset.composerScene); state.selectedInstance = ""; renderComposer(); } });
   $("#composer-asset-search").addEventListener("input", renderComposerAssetTray);
   $("#refresh-composer-assets").addEventListener("click", loadComposerAssets);
   $("#composer-asset-list").addEventListener("dragstart", (event) => { const item = event.target.closest("[data-asset-path]"); if (item) { event.dataTransfer.setData("application/x-al-studio-asset", item.dataset.assetPath); event.dataTransfer.setData("text/plain", item.dataset.assetPath); } });
@@ -453,6 +577,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.addEventListener("pointerup", () => { state.pointerDrag = null; });
   $("#instance-controls").addEventListener("input", editInstance);
   $("#instance-controls").addEventListener("click", (event) => { if (event.target.dataset.layer) changeLayer(event.target.dataset.layer); });
+  $("#add-animation").addEventListener("click", addAnimation);
+  $("#preview-animations").addEventListener("click", previewAnimations);
+  $("#animation-list").addEventListener("change", editAnimation);
+  $("#animation-list").addEventListener("click", editAnimation);
   $("#delete-instance").addEventListener("click", deleteSelectedInstance);
   $("#save-scene").addEventListener("click", saveScene);
   $("#scene-tabs").addEventListener("click", (event) => { if (event.target.dataset.scene !== undefined) { state.scene = Number(event.target.dataset.scene); renderScript(); } });

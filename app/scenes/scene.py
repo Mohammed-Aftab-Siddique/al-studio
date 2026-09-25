@@ -3,6 +3,12 @@
 import math
 from dataclasses import dataclass
 
+ANIMATION_PRESETS = frozenset(
+    {"fade-in", "fade-out", "slide-in", "bounce", "float", "pulse", "rotate", "shake"}
+)
+ANIMATION_EASINGS = frozenset({"linear", "ease-in", "ease-out", "ease-in-out"})
+ANIMATION_DIRECTIONS = frozenset({"left", "right", "up", "down"})
+
 
 def _validate_identifier(field_name: str, value: str) -> None:
     if not isinstance(value, str):
@@ -72,6 +78,52 @@ class SceneInstance:
 
 
 @dataclass(frozen=True, slots=True)
+class SceneAnimation:
+    """A deterministic animation preset applied to one scene instance."""
+
+    animation_id: str
+    target_instance_id: str
+    preset: str
+    start_seconds: float
+    duration_seconds: float
+    easing: str = "ease-in-out"
+    direction: str = "left"
+    loop: bool = False
+
+    def __post_init__(self) -> None:
+        _validate_identifier("animation_id", self.animation_id)
+        _validate_identifier("target_instance_id", self.target_instance_id)
+        if self.preset not in ANIMATION_PRESETS:
+            raise ValueError(
+                f"animation preset must be one of: {', '.join(sorted(ANIMATION_PRESETS))}"
+            )
+        for field_name, value in (
+            ("start_seconds", self.start_seconds),
+            ("duration_seconds", self.duration_seconds),
+        ):
+            if (
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or not math.isfinite(value)
+            ):
+                raise TypeError(f"animation {field_name} must be a finite number")
+        if self.start_seconds < 0:
+            raise ValueError("animation start_seconds must not be negative")
+        if self.duration_seconds <= 0:
+            raise ValueError("animation duration_seconds must be greater than zero")
+        if self.easing not in ANIMATION_EASINGS:
+            raise ValueError(
+                f"animation easing must be one of: {', '.join(sorted(ANIMATION_EASINGS))}"
+            )
+        if self.direction not in ANIMATION_DIRECTIONS:
+            raise ValueError(
+                f"animation direction must be one of: {', '.join(sorted(ANIMATION_DIRECTIONS))}"
+            )
+        if not isinstance(self.loop, bool):
+            raise TypeError("animation loop must be a boolean")
+
+
+@dataclass(frozen=True, slots=True)
 class SceneConfig:
     """Scene identity and reusable visual asset references."""
 
@@ -79,6 +131,7 @@ class SceneConfig:
     background_asset_id: str
     prop_asset_ids: tuple[str, ...] = ()
     instances: tuple[SceneInstance, ...] = ()
+    animations: tuple[SceneAnimation, ...] = ()
     camera: CameraConfig = CameraConfig()
 
     def __post_init__(self) -> None:
@@ -93,5 +146,15 @@ class SceneConfig:
         instance_ids = tuple(instance.instance_id for instance in self.instances)
         if len(instance_ids) != len(set(instance_ids)):
             raise ValueError("scene instance identifiers must be unique")
+        if not isinstance(self.animations, tuple):
+            raise TypeError("animations must be a tuple")
+        animation_ids = tuple(animation.animation_id for animation in self.animations)
+        if len(animation_ids) != len(set(animation_ids)):
+            raise ValueError("scene animation identifiers must be unique")
+        for animation in self.animations:
+            if animation.target_instance_id not in instance_ids:
+                raise ValueError(
+                    f"animation references unknown instance: {animation.target_instance_id}"
+                )
         if not isinstance(self.camera, CameraConfig):
             raise TypeError("camera must be a CameraConfig")

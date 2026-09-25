@@ -11,6 +11,8 @@ from app.project import ProjectConfig
 from app.scenes import SceneInstance
 from app.script.timeline import TimelineEvent
 
+from .presets import AnimationTransform, evaluate_animations
+
 
 @dataclass(frozen=True, slots=True)
 class CharacterState:
@@ -61,20 +63,31 @@ class FrameRenderer:
     ) -> RenderedFrame:
         event = self._event_at(timeline, time_seconds)
         scene = self.scenes[event.scene_id]
+        scene_start = next(
+            item.start_seconds for item in timeline if item.scene_id == scene.scene_id
+        )
+        scene_time = max(0.0, time_seconds - scene_start)
         background = self._image(self.asset_paths[scene.background_asset_id], 0, 0, 1280, 720)
         legacy_props = "".join(
             self._image(self.asset_paths[prop_id], 1030 + index * 55, 405, 140, 205)
             for index, prop_id in enumerate(scene.prop_asset_ids)
         )
         character_instance = self._speaking_character_instance(event, scene.instances)
+        character_animation = (
+            evaluate_animations(character_instance.instance_id, scene.animations, scene_time)
+            if character_instance
+            else AnimationTransform()
+        )
         character_svg, mouth_open = self._character_svg(
-            event, time_seconds, character_state, character_instance
+            event, time_seconds, character_state, character_instance, character_animation
         )
         instances = "".join(
             character_svg
             if character_instance is not None
             and instance.instance_id == character_instance.instance_id
-            else self._instance_svg(instance)
+            else self._instance_svg(
+                instance, evaluate_animations(instance.instance_id, scene.animations, scene_time)
+            )
             for instance in sorted(
                 scene.instances, key=lambda item: (item.z_index, item.instance_id)
             )
@@ -126,6 +139,7 @@ class FrameRenderer:
         time_seconds: float,
         state: CharacterState,
         instance: SceneInstance | None,
+        animation: AnimationTransform,
     ) -> tuple[str, bool]:
         if event.event_type != "dialogue" or not state.visible:
             return "", False
@@ -147,11 +161,8 @@ class FrameRenderer:
             'stroke-linecap="round" data-mouth="closed"/>'
         )
         if instance:
-            transform = (
-                f"translate({instance.x} {instance.y}) "
-                f"rotate({instance.rotation} {width / 2} {height / 2})"
-            )
-            opacity = instance.opacity
+            transform = self._instance_transform(instance, animation)
+            opacity = instance.opacity * animation.opacity
             instance_attribute = f' data-instance="{escape(instance.instance_id)}"'
         else:
             scale_x = -state.scale if state.facing == "left" else state.scale
@@ -166,18 +177,35 @@ class FrameRenderer:
             mouth_open,
         )
 
-    def _instance_svg(self, instance: SceneInstance) -> str:
+    def _instance_svg(self, instance: SceneInstance, animation: AnimationTransform) -> str:
         image = self._image(
             self.asset_paths[instance.asset_id], 0, 0, instance.width, instance.height
         )
-        transform = (
-            f"translate({instance.x} {instance.y}) "
-            f"rotate({instance.rotation} {instance.width / 2} {instance.height / 2})"
-        )
+        transform = self._instance_transform(instance, animation)
         return (
-            f'<g transform="{transform}" opacity="{instance.opacity}" '
+            f'<g transform="{transform}" opacity="{instance.opacity * animation.opacity}" '
             f'data-instance="{escape(instance.instance_id)}">{image}</g>'
         )
+
+    @staticmethod
+    def _instance_transform(instance: SceneInstance, animation: AnimationTransform) -> str:
+        center_x = instance.width / 2
+        center_y = instance.height / 2
+        if animation == AnimationTransform():
+            return (
+                f"translate({instance.x} {instance.y}) "
+                f"rotate({instance.rotation} {center_x} {center_y})"
+            )
+        transform = (
+            f"translate({instance.x + animation.x} {instance.y + animation.y}) "
+            f"rotate({instance.rotation + animation.rotation} {center_x} {center_y})"
+        )
+        if animation.scale != 1:
+            transform += (
+                f" translate({center_x} {center_y}) scale({animation.scale})"
+                f" translate({-center_x} {-center_y})"
+            )
+        return transform
 
     def _speaking_character_instance(
         self,

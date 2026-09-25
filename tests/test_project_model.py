@@ -78,6 +78,18 @@ def test_scene_instances_validate_placement_and_visual_asset_references() -> Non
                             "z_index": 3,
                         }
                     ],
+                    "animations": [
+                        {
+                            "id": "hero-enter",
+                            "target": "hero-left",
+                            "preset": "slide-in",
+                            "start_seconds": 0,
+                            "duration_seconds": 1.5,
+                            "easing": "ease-out",
+                            "direction": "left",
+                            "loop": False,
+                        }
+                    ],
                 }
             ],
         }
@@ -87,6 +99,8 @@ def test_scene_instances_validate_placement_and_visual_asset_references() -> Non
     assert instance.instance_id == "hero-left"
     assert instance.rotation == -4
     assert instance.opacity == 0.9
+    assert project.scenes[0].animations[0].target_instance_id == "hero-left"
+    assert project.scenes[0].animations[0].duration_seconds == 1.5
 
     with pytest.raises(ProjectConfigError, match="unknown instance asset: missing"):
         ProjectConfig.from_dict(

@@ -159,6 +159,29 @@ Characters with a matching scene instance retain that placement when dialogue
 mouth animation is active. Older `prop_asset_ids` remain supported and can be
 migrated into explicit instances by the Scene workspace.
 
+### Scene animation clip model
+
+Universal animation clips are validated children of a scene and refer to a
+`SceneInstance` by ID. Both the browser preview and final SVG renderer evaluate
+the same preset contract using scene-local time.
+
+```mermaid
+flowchart LR
+    controls[Preset + delay + duration<br/>easing + direction + loop]
+    controls --> clip[SceneAnimation]
+    clip --> project[Validated project.json]
+    project --> browser[Browser preview evaluator]
+    project --> renderer[Deterministic frame evaluator]
+    browser --> transform[Position / scale / rotation / opacity]
+    renderer --> transform
+    transform --> output[Preview and rendered frame parity]
+```
+
+Clips may overlap on the same instance; translation and rotation are added,
+scale and opacity are multiplied. The available universal presets are fade
+in/out, slide in, bounce, float, pulse, rotate, and shake. The next timeline
+slice will make parallel visual, dialogue, caption, and audio tracks explicit.
+
 ### Proposed responsibility boundaries
 
 | Component | Owns | Must not own |

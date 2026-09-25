@@ -64,7 +64,9 @@ def test_web_shell_and_static_assets_are_available(tmp_path: Path) -> None:
     assert "Al Studio" in home.text
     assert "block-list" in home.text
     assert "scene-stage" in home.text
+    assert "animation-preset" in home.text
     assert "startRender" in script.text
+    assert "previewAnimations" in script.text
 
 
 def test_project_creation_opening_and_validated_script_save(tmp_path: Path) -> None:
@@ -130,6 +132,18 @@ def test_scene_layout_can_be_saved_and_asset_previews_are_confined(tmp_path: Pat
             "visible": True,
         }
     ]
+    project["scenes"][0]["animations"] = [
+        {
+            "id": "hero-enter",
+            "target": "hero-left",
+            "preset": "slide-in",
+            "start_seconds": 0,
+            "duration_seconds": 1.5,
+            "easing": "ease-out",
+            "direction": "left",
+            "loop": False,
+        }
+    ]
 
     saved = call(app, "PUT", "/api/projects/demo-story", json={"content": project})
     reopened = call(app, "GET", "/api/projects/demo-story").json()["project"]
@@ -138,6 +152,7 @@ def test_scene_layout_can_be_saved_and_asset_previews_are_confined(tmp_path: Pat
 
     assert saved.json() == {"status": "saved"}
     assert reopened["scenes"][0]["instances"][0]["x"] == 80
+    assert reopened["scenes"][0]["animations"][0]["preset"] == "slide-in"
     assert preview.content == b"<svg/>"
     assert escaped.status_code in {400, 404}
 

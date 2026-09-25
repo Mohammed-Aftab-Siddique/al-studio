@@ -8,7 +8,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
 from app.characters import AnimationConfig, CharacterConfig
-from app.scenes import CameraConfig, SceneConfig, SceneInstance
+from app.scenes import CameraConfig, SceneAnimation, SceneConfig, SceneInstance
 
 CURRENT_SCHEMA_VERSION = 1
 ASSET_KINDS = frozenset({"character", "scene", "prop", "audio", "music"})
@@ -186,16 +186,35 @@ class ProjectConfig:
         instances = data.get("instances", [])
         if not isinstance(instances, list) or not all(isinstance(item, dict) for item in instances):
             raise ProjectConfigError("instances must be a list of objects")
+        animations = data.get("animations", [])
+        if not isinstance(animations, list) or not all(
+            isinstance(item, dict) for item in animations
+        ):
+            raise ProjectConfigError("animations must be a list of objects")
         return SceneConfig(
             scene_id=_required_string(data, "id"),
             background_asset_id=_required_string(data, "background_asset_id"),
             prop_asset_ids=tuple(props),
             instances=tuple(ProjectConfig._instance_from_dict(item) for item in instances),
+            animations=tuple(ProjectConfig._animation_from_dict(item) for item in animations),
             camera=CameraConfig(
                 x=camera_data.get("x", 0.0),
                 y=camera_data.get("y", 0.0),
                 zoom=camera_data.get("zoom", 1.0),
             ),
+        )
+
+    @staticmethod
+    def _animation_from_dict(data: dict[str, Any]) -> SceneAnimation:
+        return SceneAnimation(
+            animation_id=_required_string(data, "id"),
+            target_instance_id=_required_string(data, "target"),
+            preset=_required_string(data, "preset"),
+            start_seconds=cast(float, data.get("start_seconds", 0.0)),
+            duration_seconds=cast(float, data.get("duration_seconds")),
+            easing=data.get("easing", "ease-in-out"),
+            direction=data.get("direction", "left"),
+            loop=data.get("loop", False),
         )
 
     @staticmethod
