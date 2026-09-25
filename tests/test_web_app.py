@@ -65,8 +65,11 @@ def test_web_shell_and_static_assets_are_available(tmp_path: Path) -> None:
     assert "block-list" in home.text
     assert "scene-stage" in home.text
     assert "animation-preset" in home.text
+    assert "timeline-visual" in home.text
+    assert 'data-add="ambience"' in home.text
     assert "startRender" in script.text
     assert "previewAnimations" in script.text
+    assert "sceneTimelineData" in script.text
 
 
 def test_project_creation_opening_and_validated_script_save(tmp_path: Path) -> None:
@@ -80,7 +83,12 @@ def test_project_creation_opening_and_validated_script_save(tmp_path: Path) -> N
 
     script = opened.json()["script"]
     script["scenes"][0]["events"].append(
-        {"type": "action", "description": "Fade in", "duration_seconds": 1.5}
+        {
+            "type": "action",
+            "description": "Fade in",
+            "start_seconds": 0,
+            "duration_seconds": 1.5,
+        }
     )
     saved = call(app, "PUT", "/api/projects/demo-story/script", json={"content": script})
     invalid = call(
@@ -93,6 +101,31 @@ def test_project_creation_opening_and_validated_script_save(tmp_path: Path) -> N
     assert saved.json() == {"status": "saved"}
     assert invalid.status_code == 422
     assert escaped.status_code in {400, 404}
+
+
+def test_parallel_audio_tracks_require_a_configured_audio_asset(tmp_path: Path) -> None:
+    app = make_app(tmp_path)
+    create_demo(app)
+    project = call(app, "GET", "/api/projects/demo-story").json()["project"]
+    script = call(app, "GET", "/api/projects/demo-story/script").json()
+    script["scenes"][0]["events"].append(
+        {
+            "type": "ambience",
+            "asset_id": "room-tone",
+            "start_seconds": 0,
+            "duration_seconds": 3,
+        }
+    )
+
+    missing = call(app, "PUT", "/api/projects/demo-story/script", json={"content": script})
+    imported = call(app, "POST", "/api/assets/audio?filename=room.wav", content=b"RIFF")
+    project["assets"].append({"id": "room-tone", "kind": "audio", "path": imported.json()["path"]})
+    saved_project = call(app, "PUT", "/api/projects/demo-story", json={"content": project})
+    saved_script = call(app, "PUT", "/api/projects/demo-story/script", json={"content": script})
+
+    assert missing.status_code == 422
+    assert saved_project.status_code == 200
+    assert saved_script.json() == {"status": "saved"}
 
 
 def test_asset_import_is_type_checked_and_confined(tmp_path: Path) -> None:

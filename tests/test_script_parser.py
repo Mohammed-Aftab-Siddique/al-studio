@@ -18,6 +18,36 @@ def test_starter_script_loads_documented_event_types() -> None:
     assert script.scenes[0].events[1].event_type == "action"
 
 
+def test_script_accepts_explicit_parallel_track_start_times() -> None:
+    script = parse_script(
+        {
+            "schema_version": 1,
+            "scenes": [
+                {
+                    "scene_id": "room",
+                    "events": [
+                        {
+                            "type": "dialogue",
+                            "speaker": "Alex",
+                            "text": "Together",
+                            "start_seconds": 0.5,
+                        },
+                        {
+                            "type": "caption",
+                            "text": "At the same time",
+                            "start_seconds": 0.5,
+                            "duration_seconds": 1,
+                        },
+                    ],
+                }
+            ],
+        }
+    )
+
+    assert script.scenes[0].events[0].start_seconds == 0.5
+    assert script.scenes[0].events[1].start_seconds == 0.5
+
+
 @pytest.mark.parametrize(
     "raw, message",
     [
@@ -38,6 +68,25 @@ def test_starter_script_loads_documented_event_types() -> None:
                 ],
             },
             "duration_seconds must be a positive number",
+        ),
+        (
+            {
+                "schema_version": 1,
+                "scenes": [
+                    {
+                        "scene_id": "room",
+                        "events": [
+                            {
+                                "type": "caption",
+                                "text": "No",
+                                "duration_seconds": 1,
+                                "start_seconds": -1,
+                            }
+                        ],
+                    }
+                ],
+            },
+            "start_seconds must be a non-negative number",
         ),
     ],
 )

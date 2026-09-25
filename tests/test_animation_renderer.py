@@ -51,6 +51,38 @@ def test_dialogue_mouth_state_is_timed_and_deterministic(tmp_path: Path) -> None
     assert 'data-mouth="closed"' in closed_frame.path.read_text(encoding="utf-8")
 
 
+def test_dialogue_mouth_state_survives_overlapping_visual_track(tmp_path: Path) -> None:
+    renderer, _ = _renderer_and_timeline(tmp_path)
+    timeline = (
+        TimelineEvent(
+            "visual",
+            "animation",
+            "starter-room",
+            0,
+            1,
+            {},
+            "visual",
+            0,
+            1,
+        ),
+        TimelineEvent(
+            "voice",
+            "dialogue",
+            "starter-room",
+            0,
+            0.5,
+            {"speaker": "Alex"},
+            "dialogue",
+            0,
+            1,
+        ),
+    )
+
+    frame = renderer.render_frame(timeline, 0, tmp_path / "parallel.svg")
+
+    assert frame.mouth_open is True
+
+
 def test_frame_renderer_generates_expected_sequence_length(tmp_path: Path) -> None:
     renderer, timeline = _renderer_and_timeline(tmp_path)
 

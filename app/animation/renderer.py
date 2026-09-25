@@ -61,11 +61,20 @@ class FrameRenderer:
         output_path: Path,
         character_state: CharacterState = DEFAULT_CHARACTER_STATE,
     ) -> RenderedFrame:
-        event = self._event_at(timeline, time_seconds)
-        scene = self.scenes[event.scene_id]
-        scene_start = next(
-            item.start_seconds for item in timeline if item.scene_id == scene.scene_id
+        scene_event = self._scene_event_at(timeline, time_seconds)
+        scene = self.scenes[scene_event.scene_id]
+        scene_start = scene_event.scene_start_seconds
+        dialogue_event = next(
+            (
+                item
+                for item in timeline
+                if item.scene_id == scene.scene_id
+                and item.event_type == "dialogue"
+                and item.start_seconds <= time_seconds < item.start_seconds + item.duration_seconds
+            ),
+            None,
         )
+        event = dialogue_event or scene_event
         scene_time = max(0.0, time_seconds - scene_start)
         background = self._image(self.asset_paths[scene.background_asset_id], 0, 0, 1280, 720)
         legacy_props = "".join(
@@ -117,7 +126,7 @@ class FrameRenderer:
         if not timeline:
             return ()
         frame_rate = fps or self.project.render.fps
-        duration = timeline[-1].start_seconds + timeline[-1].duration_seconds
+        duration = max(item.start_seconds + item.duration_seconds for item in timeline)
         frame_count = max(1, round(duration * frame_rate))
         return tuple(
             self.render_frame(timeline, index / frame_rate, output_dir / f"frame-{index:06d}.svg")
@@ -132,6 +141,20 @@ class FrameRenderer:
             if event.start_seconds <= time_seconds < event.start_seconds + event.duration_seconds:
                 return event
         return timeline[-1]
+
+    @staticmethod
+    def _scene_event_at(timeline: tuple[TimelineEvent, ...], time_seconds: float) -> TimelineEvent:
+        if time_seconds < 0:
+            raise ValueError("frame time must not be negative")
+        for event in timeline:
+            if (
+                event.scene_duration_seconds > 0
+                and event.scene_start_seconds
+                <= time_seconds
+                < event.scene_start_seconds + event.scene_duration_seconds
+            ):
+                return event
+        return FrameRenderer._event_at(timeline, time_seconds)
 
     def _character_svg(
         self,

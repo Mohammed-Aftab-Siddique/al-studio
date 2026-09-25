@@ -280,10 +280,13 @@ time, duration, scene identifier, and payload specific to its event type.
 ```text
 TimelineEvent
   id
-  type: dialogue | action | scene_change | ambience | sound_effect | caption
+  type: animation | dialogue | action | ambience | sound_effect | caption
+  track: visual | dialogue | caption | audio
   scene_id
   start_seconds
   duration_seconds
+  scene_start_seconds
+  scene_duration_seconds
   payload
 ```
 
@@ -291,6 +294,29 @@ For dialogue, the payload should include the speaker ID, text, generated
 WAV path, and caption text. Generated WAV duration becomes the dialogue
 duration; the same time interval drives mouth animation, audio placement,
 and subtitle timing.
+
+The builder first resolves scene-local scheduling. An explicit
+`start_seconds` places an event independently; an omitted start advances from
+the furthest endpoint for backwards-compatible sequential scripts. It then
+adds project animation clips to the visual track, calculates the scene window,
+and offsets the next scene. The renderer selects the scene window separately
+from the active dialogue, so mouth animation and visual clips can overlap.
+
+```mermaid
+flowchart LR
+    starts[Explicit or automatic starts] --> plan[Scene-local timeline plan]
+    animations[Project animations] --> visual[Visual track]
+    script[Script events] --> plan
+    plan --> visual
+    plan --> dialogue[Dialogue track]
+    plan --> captions[Caption track]
+    plan --> audio[Audio track]
+    visual --> render[Frame renderer]
+    dialogue --> render
+    dialogue --> mix[Audio mixer]
+    audio --> mix
+    captions --> srt[Subtitle writer]
+```
 
 ## Output Layout
 

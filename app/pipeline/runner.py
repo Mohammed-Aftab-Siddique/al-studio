@@ -9,7 +9,7 @@ from app.animation import FrameRenderer
 from app.audio.kokoro import KokoroVoiceEngine
 from app.audio.mix import AudioMixer
 from app.project import ProjectAssetManager
-from app.script import DialogueTimelineBuilder, load_script
+from app.script import DialogueTimelineBuilder, load_script, validate_script_references
 from app.video.compositor import VideoCompositor
 from app.video.subtitles import SubtitleWriter
 
@@ -39,6 +39,7 @@ class RenderPipeline:
         project = self.assets.load_project(project_path)
         asset_paths = self.assets.validate_assets(project)
         script = load_script(script_path)
+        validate_script_references(project, script)
         output_dir.mkdir(parents=True, exist_ok=True)
         if dry_run:
             self._metadata(output_dir, project.name, "dry-run", {"assets": sorted(asset_paths)})
@@ -46,7 +47,9 @@ class RenderPipeline:
             return RenderResult(output_dir, None, True)
         report("synthesizing dialogue", 15)
         voice_engine = self.voice_engine or KokoroVoiceEngine()
-        timeline = DialogueTimelineBuilder(voice_engine).build(project, script, output_dir)
+        timeline = DialogueTimelineBuilder(voice_engine).build(
+            project, script, output_dir, asset_paths
+        )
         report("rendering frames", 40)
         frames = FrameRenderer(project, asset_paths).render_sequence(
             timeline, output_dir / "frames"

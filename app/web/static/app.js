@@ -90,6 +90,10 @@ function currentProjectScene() {
   return state.project?.scenes?.[state.composerScene];
 }
 
+function scriptSceneFor(projectScene) {
+  return state.script?.scenes?.find((scene) => scene.scene_id === projectScene?.id);
+}
+
 function uniqueId(base, existing) {
   const clean = base.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "asset";
   let candidate = clean;
@@ -111,6 +115,52 @@ function normalizeSceneInstances(scene) {
     scene.instances.push({ id, asset_id: assetId, x: 1030 + index * 55, y: 405, width: 140, height: 205, rotation: 0, opacity: 1, z_index: index, visible: true });
   });
   scene.prop_asset_ids = [];
+}
+
+function sceneTimelineData(scene) {
+  const clips = { visual: [], dialogue: [], caption: [], audio: [] };
+  if (!scene) return { clips, duration: 1 };
+  (scene.animations || []).forEach((animation) => clips.visual.push({ start: animation.start_seconds, duration: animation.duration_seconds, label: `${animation.preset}${animation.loop ? " ↻" : ""}` }));
+  const scriptScene = scriptSceneFor(scene);
+  let cursor = 0;
+  (scriptScene?.events || []).forEach((event) => {
+    const duration = event.type === "dialogue" ? 2 : Number(event.duration_seconds || 1);
+    const explicit = Number(event.start_seconds);
+    const start = event.start_seconds === undefined || event.start_seconds === null || event.start_seconds === "" || !Number.isFinite(explicit) ? cursor : explicit;
+    const label = event.type === "dialogue" ? `${event.speaker}: ${event.text}` : event.type === "caption" ? event.text : event.type === "action" ? (event.description || event.name || "Action") : (event.asset_id || event.type.replace("_", " "));
+    if (event.type === "dialogue") {
+      clips.dialogue.push({ start, duration, label });
+      clips.audio.push({ start, duration, label: `${event.speaker} voice` });
+      clips.caption.push({ start, duration, label: event.caption || event.text });
+    } else if (event.type === "caption") clips.caption.push({ start, duration, label });
+    else if (["ambience", "sound_effect"].includes(event.type)) clips.audio.push({ start, duration, label });
+    else clips.visual.push({ start, duration, label });
+    cursor = Math.max(cursor, start + duration);
+  });
+  const duration = Math.max(1, ...Object.values(clips).flat().map((clip) => clip.start + clip.duration));
+  return { clips, duration };
+}
+
+function renderTimeline() {
+  const { clips, duration } = sceneTimelineData(currentProjectScene());
+  $("#timeline-duration").textContent = `≈ ${duration.toFixed(1)}s`;
+  $("#timeline-ruler").innerHTML = Array.from({ length: 6 }, (_, index) => `<span class="timeline-tick" style="left:${index * 20}%">${(duration * index / 5).toFixed(1)}s</span>`).join("");
+  Object.entries(clips).forEach(([track, items]) => {
+    const rowEnds = [];
+    const arranged = [...items].sort((a, b) => a.start - b.start).map((clip) => {
+      let row = rowEnds.findIndex((end) => end <= clip.start);
+      if (row < 0) row = rowEnds.length;
+      rowEnds[row] = clip.start + clip.duration;
+      return { ...clip, row };
+    });
+    const node = $(`#timeline-${track}`);
+    node.style.height = `${Math.max(34, 8 + rowEnds.length * 27)}px`;
+    node.innerHTML = arranged.map((clip) => {
+      const left = Math.max(0, clip.start / duration * 100);
+      const width = Math.max(0.8, clip.duration / duration * 100);
+      return `<span class="timeline-clip ${track}" style="left:${left}%;width:${width}%;top:${4 + clip.row * 27}px" title="${escapeHtml(clip.label)} · ${clip.start.toFixed(1)}s">${escapeHtml(clip.label)}</span>`;
+    }).join("");
+  });
 }
 
 async function loadComposerAssets() {
@@ -187,7 +237,7 @@ function renderComposer() {
   normalizeSceneInstances(scene);
   const stage = $("#scene-stage");
   const base = '<defs><pattern id="stage-grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#ffffff" stroke-opacity=".045" stroke-width="1"/></pattern></defs><rect width="1280" height="720" fill="#11121d"/><rect width="1280" height="720" fill="url(#stage-grid)"/>';
-  if (!scene) { stage.innerHTML = base; renderInstanceInspector(); return; }
+  if (!scene) { stage.innerHTML = base; renderInstanceInspector(); renderTimeline(); return; }
   const background = state.project.assets.find((asset) => asset.id === scene.background_asset_id);
   const backgroundSvg = background ? `<image href="${assetUrl(background.path)}" x="0" y="0" width="1280" height="720" preserveAspectRatio="xMidYMid slice"/>` : "";
   const instances = [...scene.instances].sort((a, b) => (a.z_index - b.z_index) || a.id.localeCompare(b.id));
@@ -205,6 +255,7 @@ function renderComposer() {
   stage.innerHTML = `${base}${backgroundSvg}${instanceSvg}`;
   stage.classList.toggle("animation-previewing", state.animationPreviewTime !== null);
   renderInstanceInspector();
+  renderTimeline();
 }
 
 function renderInstanceInspector() {
@@ -237,7 +288,7 @@ function registerProjectAsset(path) {
   let asset = state.project.assets.find((item) => item.path === path);
   if (asset) return asset;
   const category = path.split("/")[0];
-  const kind = { characters: "character", scenes: "scene", props: "prop" }[category] || "prop";
+  const kind = { characters: "character", scenes: "scene", props: "prop", audio: "audio", music: "music" }[category] || "prop";
   const filename = path.split("/").pop().replace(/\.[^.]+$/, "");
   const id = uniqueId(filename, new Set(state.project.assets.map((item) => item.id)));
   asset = { id, kind, path };
@@ -368,7 +419,7 @@ function previewAnimations() {
   const scene = currentProjectScene();
   if (!scene?.animations?.length) return toast("Add an animation to preview", true);
   if (state.animationPreviewTime !== null) { stopAnimationPreview(); return; }
-  const duration = Math.min(8, Math.max(2, ...scene.animations.map((item) => item.start_seconds + item.duration_seconds * (item.loop ? 2 : 1))));
+  const duration = Math.min(12, Math.max(2, sceneTimelineData(scene).duration));
   const started = performance.now();
   $("#preview-animations").textContent = "■";
   const tick = (now) => {
@@ -407,17 +458,23 @@ function renderScript() {
   $("#block-list").innerHTML = scene ? scene.events.map(blockTemplate).join("") : "";
   $("#add-row").hidden = !scene;
   $("#save-script").disabled = !scene;
+  renderTimeline();
 }
 
 function blockTemplate(event, index) {
   const type = event.type;
   const speakers = state.project.characters || [];
+  const start = event.start_seconds ?? "";
+  const startField = `<label>Start (seconds)<input data-field="start_seconds" type="number" min="0" step="0.1" value="${escapeHtml(start)}" placeholder="Auto"></label>`;
   let fields;
   if (type === "dialogue") {
-    fields = `<label>Speaker<select data-field="speaker">${speakers.map((character) => `<option ${character.name === event.speaker ? "selected" : ""}>${escapeHtml(character.name)}</option>`).join("")}</select></label><label>Dialogue<input data-field="text" value="${escapeHtml(event.text)}"></label><label>Duration<input value="Auto from voice" disabled></label><label class="full">Caption<input data-field="caption" value="${escapeHtml(event.caption || "")}" placeholder="Defaults to dialogue text"></label>`;
+    fields = `<label>Speaker<select data-field="speaker">${speakers.map((character) => `<option ${character.name === event.speaker ? "selected" : ""}>${escapeHtml(character.name)}</option>`).join("")}</select></label><label>Dialogue<input data-field="text" value="${escapeHtml(event.text)}"></label>${startField}<label>Duration<input value="Auto from voice" disabled></label><label class="full">Caption<input data-field="caption" value="${escapeHtml(event.caption || "")}" placeholder="Defaults to dialogue text"></label>`;
+  } else if (["ambience", "sound_effect"].includes(type)) {
+    const assets = (state.project.assets || []).filter((asset) => ["audio", "music"].includes(asset.kind));
+    fields = `<label class="full">Audio asset<select data-field="asset_id">${assets.map((asset) => `<option value="${escapeHtml(asset.id)}" ${asset.id === event.asset_id ? "selected" : ""}>${escapeHtml(asset.id)} · ${escapeHtml(asset.path)}</option>`).join("") || '<option value="">Import an audio asset first</option>'}</select></label>${startField}<label>Duration (seconds)<input data-field="duration_seconds" type="number" min="0.1" step="0.1" value="${escapeHtml(event.duration_seconds || 1)}"></label>`;
   } else {
     const textKey = type === "caption" ? "text" : "description";
-    fields = `<label class="full">${type === "caption" ? "Caption" : "Action"}<input data-field="${textKey}" value="${escapeHtml(event[textKey] || "")}" placeholder="Describe this ${type}"></label><label>Duration (seconds)<input data-field="duration_seconds" type="number" min="0.1" step="0.1" value="${escapeHtml(event.duration_seconds || 1)}"></label>`;
+    fields = `<label class="full">${type === "caption" ? "Caption" : "Action"}<input data-field="${textKey}" value="${escapeHtml(event[textKey] || "")}" placeholder="Describe this ${type}"></label>${startField}<label>Duration (seconds)<input data-field="duration_seconds" type="number" min="0.1" step="0.1" value="${escapeHtml(event.duration_seconds || 1)}"></label>`;
   }
   return `<article class="script-block" data-index="${index}"><span class="drag">⠿</span><span class="type-pill">${escapeHtml(type)}</span><div class="block-fields">${fields}</div><div class="block-actions"><button data-move="up" title="Move up">↑</button><button data-move="down" title="Move down">↓</button><button data-delete title="Delete">×</button></div></article>`;
 }
@@ -427,7 +484,10 @@ function editBlock(event) {
   if (!block) return;
   const item = currentScene().events[Number(block.dataset.index)];
   const field = event.target.dataset.field;
-  if (field) item[field] = field === "duration_seconds" ? Number(event.target.value) : event.target.value;
+  if (!field) return;
+  if (field === "start_seconds" && event.target.value === "") delete item.start_seconds;
+  else item[field] = ["duration_seconds", "start_seconds"].includes(field) ? Number(event.target.value) : event.target.value;
+  renderTimeline();
 }
 
 function actOnBlock(event) {
@@ -447,6 +507,10 @@ function addBlock(type) {
   if (type === "dialogue") scene.events.push({ type, speaker: state.project.characters?.[0]?.name || "Narrator", text: "New dialogue", caption: "" });
   if (type === "action") scene.events.push({ type, description: "Describe the action", duration_seconds: 1 });
   if (type === "caption") scene.events.push({ type, text: "On-screen caption", duration_seconds: 2 });
+  if (["ambience", "sound_effect"].includes(type)) {
+    const asset = (state.project.assets || []).find((item) => ["audio", "music"].includes(item.kind));
+    scene.events.push({ type, asset_id: asset?.id || "", duration_seconds: type === "ambience" ? 5 : 1 });
+  }
   renderScript();
 }
 
@@ -472,7 +536,12 @@ async function importAsset() {
   const button = $("#import-asset");
   button.disabled = true;
   try {
-    await api(`/api/assets/${category}?filename=${encodeURIComponent(file.name)}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file });
+    const imported = await api(`/api/assets/${category}?filename=${encodeURIComponent(file.name)}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file });
+    if (state.project && ["audio", "music"].includes(category)) {
+      registerProjectAsset(imported.path);
+      await api(`/api/projects/${encodeURIComponent(state.projectName)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: state.project }) });
+      renderScript();
+    }
     $("#asset-file").value = "";
     toast(`Imported ${file.name}`);
     await loadAssets();
@@ -583,7 +652,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#animation-list").addEventListener("click", editAnimation);
   $("#delete-instance").addEventListener("click", deleteSelectedInstance);
   $("#save-scene").addEventListener("click", saveScene);
-  $("#scene-tabs").addEventListener("click", (event) => { if (event.target.dataset.scene !== undefined) { state.scene = Number(event.target.dataset.scene); renderScript(); } });
+  $("#scene-tabs").addEventListener("click", (event) => { if (event.target.dataset.scene !== undefined) { state.scene = Number(event.target.dataset.scene); const sceneId = currentScene()?.scene_id; const projectIndex = state.project?.scenes?.findIndex((scene) => scene.id === sceneId) ?? -1; if (projectIndex >= 0) state.composerScene = projectIndex; renderScript(); } });
   $("#block-list").addEventListener("input", editBlock); $("#block-list").addEventListener("click", actOnBlock);
   $("#add-row").addEventListener("click", (event) => { if (event.target.dataset.add) addBlock(event.target.dataset.add); });
   $("#save-script").addEventListener("click", saveScript);

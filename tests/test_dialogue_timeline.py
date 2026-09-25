@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -6,6 +7,7 @@ import soundfile as sf
 
 from app.audio.voice import VoiceEngine
 from app.project import ProjectAssetManager, ProjectConfigError
+from app.scenes import SceneAnimation, SceneInstance
 from app.script import DialogueTimelineBuilder, load_script
 from app.script.parser import parse_script
 
@@ -42,6 +44,55 @@ def test_timeline_synthesizes_dialogue_and_uses_measured_duration(tmp_path: Path
     assert action.start_seconds == pytest.approx(0.1)
     assert caption.start_seconds == pytest.approx(0.9)
     assert Path(dialogue.payload["audio_path"]).is_file()
+    assert dialogue.track == "dialogue"
+    assert action.track == "visual"
+    assert caption.track == "caption"
+    assert dialogue.scene_duration_seconds == pytest.approx(2.4)
+
+
+def test_parallel_tracks_share_scene_time_and_preserve_legacy_cursor(tmp_path: Path) -> None:
+    project = _starter_project()
+    scene = replace(
+        project.scenes[0],
+        instances=(SceneInstance("hero", "alex-visual", 0, 0, 200, 300),),
+        animations=(SceneAnimation("enter", "hero", "slide-in", 0, 1, "linear", "left"),),
+    )
+    project = replace(project, scenes=(scene,))
+    script = parse_script(
+        {
+            "schema_version": 1,
+            "scenes": [
+                {
+                    "scene_id": "starter-room",
+                    "events": [
+                        {
+                            "type": "dialogue",
+                            "speaker": "Alex",
+                            "text": "Together",
+                            "start_seconds": 0,
+                        },
+                        {
+                            "type": "caption",
+                            "text": "Overlapping caption",
+                            "duration_seconds": 0.5,
+                            "start_seconds": 0,
+                        },
+                        {"type": "action", "duration_seconds": 0.25},
+                    ],
+                }
+            ],
+        }
+    )
+
+    timeline = DialogueTimelineBuilder(FakeVoiceEngine()).build(project, script, tmp_path)
+    by_type = {event.event_type: event for event in timeline}
+
+    assert by_type["dialogue"].start_seconds == 0
+    assert by_type["caption"].start_seconds == 0
+    assert by_type["action"].start_seconds == pytest.approx(0.5)
+    assert by_type["animation"].track == "visual"
+    assert by_type["animation"].scene_duration_seconds == pytest.approx(1)
+    assert {event.track for event in timeline} == {"dialogue", "caption", "visual"}
 
 
 def test_timeline_rejects_unknown_speaker_before_synthesis(tmp_path: Path) -> None:

@@ -19,6 +19,14 @@ def _validate_duration(value: Any) -> float:
     return float(value)
 
 
+def _validate_start(value: Any) -> float | None:
+    if value is None:
+        return None
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
+        raise ValueError("start_seconds must be a non-negative number")
+    return float(value)
+
+
 @dataclass(frozen=True, slots=True)
 class ScriptEvent:
     """A timed non-dialogue instruction in a scene."""
@@ -26,11 +34,13 @@ class ScriptEvent:
     event_type: str
     duration_seconds: float
     payload: dict[str, Any]
+    start_seconds: float | None = None
 
     def __post_init__(self) -> None:
         if self.event_type not in EVENT_TYPES - {"dialogue"}:
             raise ValueError(f"unsupported non-dialogue event type: {self.event_type}")
         _validate_duration(self.duration_seconds)
+        _validate_start(self.start_seconds)
         if not isinstance(self.payload, dict):
             raise TypeError("event payload must be an object")
 
@@ -42,12 +52,14 @@ class DialogueEvent:
     speaker: str
     text: str
     caption: str | None = None
+    start_seconds: float | None = None
 
     def __post_init__(self) -> None:
         _validate_string("speaker", self.speaker)
         _validate_string("text", self.text)
         if self.caption is not None:
             _validate_string("caption", self.caption)
+        _validate_start(self.start_seconds)
 
 
 @dataclass(frozen=True, slots=True)

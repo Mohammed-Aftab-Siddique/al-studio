@@ -8,12 +8,21 @@ from app.script.timeline import TimelineEvent
 class SubtitleWriter:
     def write(self, timeline: tuple[TimelineEvent, ...], output_path: Path) -> Path:
         lines = []
-        for index, event in enumerate((e for e in timeline if e.event_type == "dialogue"), 1):
+        caption_events = sorted(
+            (event for event in timeline if event.event_type in {"dialogue", "caption"}),
+            key=lambda event: (event.start_seconds, event.event_id),
+        )
+        for index, event in enumerate(caption_events, 1):
+            caption = (
+                event.payload["caption"]
+                if event.event_type == "dialogue"
+                else event.payload["text"]
+            )
             lines.extend(
                 [
                     str(index),
                     f"{self._stamp(event.start_seconds)} --> {self._stamp(event.start_seconds + event.duration_seconds)}",
-                    event.payload["caption"],
+                    caption,
                     "",
                 ]
             )

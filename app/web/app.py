@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from app.audio.kokoro import KokoroVoiceEngine
 from app.pipeline import RenderPipeline
 from app.project import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, ProjectAssetManager, ProjectConfig
-from app.script import load_script, parse_script
+from app.script import load_script, parse_script, validate_script_references
 
 WEB_DIR = Path(__file__).resolve().parent
 DEFAULT_ROOT = Path.cwd()
@@ -214,7 +214,11 @@ def create_app(
         if not project_path(name, "project.json").is_file():
             raise HTTPException(404, "Project not found")
         try:
-            parse_script(payload.content)
+            script = parse_script(payload.content)
+            project = ProjectAssetManager(assets_root).load_project(
+                project_path(name, "project.json")
+            )
+            validate_script_references(project, script)
         except ValueError as error:
             raise HTTPException(422, str(error)) from error
         path.write_text(json.dumps(payload.content, indent=2) + "\n", encoding="utf-8")
@@ -275,15 +279,7 @@ def create_app(
             project = manager.load_project(project_path(name, "project.json"))
             assets = manager.validate_assets(project)
             script = load_script(project_path(name, "script.json"))
-            scene_ids = {scene.scene_id for scene in project.scenes}
-            speakers = {character.name for character in project.characters}
-            for scene in script.scenes:
-                if scene.scene_id not in scene_ids:
-                    raise ValueError(f"Script references unknown scene: {scene.scene_id}")
-                for event in scene.events:
-                    speaker = getattr(event, "speaker", None)
-                    if speaker is not None and speaker not in speakers:
-                        raise ValueError(f"Script references unknown speaker: {speaker}")
+            validate_script_references(project, script)
         except (OSError, ValueError) as error:
             raise HTTPException(422, str(error)) from error
         return {"valid": True, "assets": len(assets), "scenes": len(script.scenes)}

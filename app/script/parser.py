@@ -59,12 +59,18 @@ def _parse_event(raw: Any) -> DialogueEvent | ScriptEvent:
             speaker=cast(str, raw.get("speaker")),
             text=cast(str, raw.get("text")),
             caption=raw.get("caption"),
+            start_seconds=cast(float | None, raw.get("start_seconds")),
         )
     if event_type not in {"action", "ambience", "sound_effect", "caption"}:
         raise ScriptConfigError(f"unsupported event type: {event_type}")
-    payload = {key: value for key, value in raw.items() if key not in {"type", "duration_seconds"}}
+    payload = {
+        key: value
+        for key, value in raw.items()
+        if key not in {"type", "duration_seconds", "start_seconds"}
+    }
     return ScriptEvent(
         event_type=event_type,
         duration_seconds=cast(float, raw.get("duration_seconds")),
         payload=payload,
+        start_seconds=cast(float | None, raw.get("start_seconds")),
     )

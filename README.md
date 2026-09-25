@@ -162,11 +162,23 @@ each configured scene and one block for each event in the selected scene.
   Dialogue timing is calculated later from the generated voice audio.
 - An **Action** block provides an action description and a positive duration.
 - A **Caption** block provides on-screen text and a positive duration.
+- **Ambience** and **Sound effect** blocks select a configured audio/music
+  asset and provide a positive duration.
 
-Use **＋ Dialogue**, **＋ Action**, or **＋ Caption** to add blocks. The `↑` and
-`↓` controls change event order and `×` deletes a block. Choose **Save script**
-when finished; the server validates the script schema before replacing the
-project's `script.json`.
+Every block has an optional **Start (seconds)** field. Leave it blank for the
+original sequential behavior, where the block starts after the furthest prior
+endpoint. Enter a value such as `0` or `1.5` to place it on scene-local time and
+overlap it with animation, dialogue, captions, or audio. The four-lane
+**Shared timeline** beneath the Scene composer visualizes the result. Dialogue
+widths are planning estimates in the browser because the final duration comes
+from the generated WAV; rendering replaces the estimate with measured timing.
+
+Use the add buttons to create blocks. The `↑` and `↓` controls change event
+order and `×` deletes a block. Choose **Save script** when finished; the server
+validates timing plus scene, speaker, and audio-asset references before
+replacing `script.json`. Audio/music imported while a project is open is
+automatically registered with that project and becomes selectable in audio
+blocks.
 
 ### Preview a Voice in the Browser
 
@@ -370,10 +382,11 @@ Create `projects/my-story/script.json`:
           "type": "dialogue",
           "speaker": "Alex",
           "text": "Hello. This is my first story made with AL Studio.",
-          "caption": "Hello. This is my first story made with AL Studio."
+          "caption": "Hello. This is my first story made with AL Studio.",
+          "start_seconds": 0
         },
-        {"type": "action", "name": "wave", "duration_seconds": 0.8},
-        {"type": "caption", "text": "The End", "duration_seconds": 1.5}
+        {"type": "action", "name": "wave", "start_seconds": 0, "duration_seconds": 0.8},
+        {"type": "caption", "text": "The End", "start_seconds": 2.5, "duration_seconds": 1.5}
       ]
     }
   ]
@@ -383,10 +396,15 @@ Create `projects/my-story/script.json`:
 `scene_id` must match a scene from `project.json`; `speaker` must match a
 character name. Dialogue duration comes from the generated voice audio. The
 other supported event types—`action`, `ambience`, `sound_effect`, and
-`caption`—need a positive `duration_seconds`.
+`caption`—need a positive `duration_seconds`. `start_seconds` is optional and
+must be zero or greater. Events with the same or intersecting time ranges run
+in parallel; events without a start retain sequential, backwards-compatible
+scheduling.
 
-Actions are currently timeline markers rather than pose changes, and ambience
-or sound-effect events are parsed but not yet mixed from source files. See
+Actions are timeline markers rather than pose changes. Ambience and sound
+effects reference `audio` or `music` assets from `project.json`; ambience loops
+for its configured interval, sound effects are padded/trimmed to it, and both
+are mixed with dialogue at their scheduled offsets. See
 [app/script/FORMAT.md](app/script/FORMAT.md) for the formal format reference.
 
 ## Render Your Story
