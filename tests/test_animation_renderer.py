@@ -282,3 +282,103 @@ def test_renderer_plays_sprite_sheet_and_frame_sequence_capabilities(tmp_path: P
     assert 'data-asset-animation="walk" data-frame="1"' in contents
     assert 'viewBox="64 0 64 96"' in contents
     assert 'data-asset-animation="blink" data-frame="1"' in contents
+
+
+def test_layered_rig_pose_interpolates_hierarchical_parts(tmp_path: Path) -> None:
+    for relative in (
+        "scenes/room.svg",
+        "characters/hero.svg",
+        "characters/body.svg",
+        "characters/arm.svg",
+    ):
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("<svg/>", encoding="utf-8")
+    project = ProjectConfig.from_dict(
+        {
+            "schema_version": 1,
+            "name": "rig-render",
+            "assets": [
+                {"id": "room", "kind": "scene", "path": "scenes/room.svg"},
+                {
+                    "id": "hero",
+                    "kind": "character",
+                    "path": "characters/hero.svg",
+                    "capabilities": {
+                        "rig": {
+                            "canvas_width": 200,
+                            "canvas_height": 300,
+                            "parts": [
+                                {
+                                    "id": "body",
+                                    "path": "characters/body.svg",
+                                    "width": 120,
+                                    "height": 240,
+                                    "pivot_x": 60,
+                                    "pivot_y": 80,
+                                },
+                                {
+                                    "id": "arm",
+                                    "path": "characters/arm.svg",
+                                    "parent_id": "body",
+                                    "x": 90,
+                                    "y": 70,
+                                    "width": 30,
+                                    "height": 120,
+                                    "pivot_x": 15,
+                                    "pivot_y": 10,
+                                },
+                            ],
+                            "poses": [
+                                {
+                                    "id": "wave",
+                                    "duration_seconds": 1,
+                                    "keyframes": [
+                                        {"at": 0, "transforms": {"arm": {"rotation": -20}}},
+                                        {"at": 1, "transforms": {"arm": {"rotation": 40}}},
+                                    ],
+                                }
+                            ],
+                        }
+                    },
+                },
+            ],
+            "characters": [],
+            "scenes": [
+                {
+                    "id": "room",
+                    "background_asset_id": "room",
+                    "instances": [
+                        {
+                            "id": "hero",
+                            "asset_id": "hero",
+                            "x": 10,
+                            "y": 20,
+                            "width": 200,
+                            "height": 300,
+                        }
+                    ],
+                    "animations": [
+                        {
+                            "id": "wave",
+                            "target": "hero",
+                            "preset": "rig",
+                            "rig_pose_id": "wave",
+                            "start_seconds": 0,
+                            "duration_seconds": 1,
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    assets = ProjectAssetManager(tmp_path).validate_assets(project)
+    timeline = (TimelineEvent("hold", "scene_hold", "room", 0, 1, {}, "visual", 0, 1),)
+
+    frame = FrameRenderer(project, assets).render_frame(timeline, 0.5, tmp_path / "rig.svg")
+    contents = frame.path.read_text(encoding="utf-8")
+
+    assert 'data-rig-pose="wave" data-rig-progress="0.500000"' in contents
+    assert 'data-rig-part="body"' in contents
+    assert "rotate(10.0 15 10)" in contents
+    assert contents.index('data-rig-part="body"') < contents.index('data-rig-part="arm"')

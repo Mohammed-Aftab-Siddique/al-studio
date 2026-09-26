@@ -29,3 +29,24 @@ Scene clips select a capability with `preset: "asset"` and
 `floor((t - start_seconds) * fps)`. Looping clips apply modulo frame count;
 non-looping clips hold their final frame. Sprite sheets are cropped through an
 SVG view box, while frame sequences embed the resolved image for that index.
+
+## Layered Rig Capability
+
+An asset can also declare `capabilities.rig` with a positive `canvas_width`
+and `canvas_height`, one or more image `parts`, and named `poses`. Each part
+defines its asset-relative image path, parent-relative position and size,
+local pivot, optional `parent_id`, and integer layer. Parent references must
+form an acyclic hierarchy. All part files are resolved and type-checked before
+rendering.
+
+A pose contains a suggested positive `duration_seconds`, a loop default, and
+at least two strictly ordered keyframes spanning normalized time `0` through
+`1`. Keyframes map part IDs to local translation, rotation, scale, and opacity.
+Values are linearly interpolated between adjacent keyframes; omitted part
+transforms are neutral at that keyframe.
+
+Scene clips select a pose with `preset: "rig"` and `rig_pose_id`. The browser
+and SVG renderer calculate the same normalized clip progress, interpolate the
+same transforms, and recursively apply parent transforms to child parts.
+Non-looping clips hold the final pose; looping clips wrap at their editable
+scene duration. Universal whole-instance presets can run at the same time.

@@ -120,7 +120,7 @@ function normalizeSceneInstances(scene) {
 function sceneTimelineData(scene) {
   const clips = { visual: [], dialogue: [], caption: [], audio: [] };
   if (!scene) return { clips, duration: 1 };
-  (scene.animations || []).forEach((animation) => clips.visual.push({ start: animation.start_seconds, duration: animation.duration_seconds, label: `${animation.preset === "asset" ? animation.asset_animation_id : animation.preset}${animation.loop ? " ↻" : ""}` }));
+  (scene.animations || []).forEach((animation) => clips.visual.push({ start: animation.start_seconds, duration: animation.duration_seconds, label: `${animation.preset === "asset" ? animation.asset_animation_id : animation.preset === "rig" ? animation.rig_pose_id : animation.preset}${animation.loop ? " ↻" : ""}` }));
   const scriptScene = scriptSceneFor(scene);
   let cursor = 0;
   (scriptScene?.events || []).forEach((event) => {
@@ -191,15 +191,20 @@ function availableAnimations(instance) {
   const universal = asset?.kind === "scene" ? ["fade-in", "fade-out", "slide-in", "pulse"] : Object.keys(animationLabels);
   const presets = universal.map((name) => ({ value: name, label: animationLabels[name] }));
   const capabilities = (asset?.capabilities?.animations || []).map((animation) => ({ value: `asset:${animation.id}`, label: `${animation.id} · ${animation.type === "sprite_sheet" ? "Sprite sheet" : "Frame sequence"}` }));
-  return [...capabilities, ...presets];
+  const poses = (asset?.capabilities?.rig?.poses || []).map((pose) => ({ value: `rig:${pose.id}`, label: `${pose.id} · Layered rig` }));
+  return [...capabilities, ...poses, ...presets];
 }
 
 function animationChoice(animation) {
-  return animation.preset === "asset" ? `asset:${animation.asset_animation_id}` : animation.preset;
+  if (animation.preset === "asset") return `asset:${animation.asset_animation_id}`;
+  if (animation.preset === "rig") return `rig:${animation.rig_pose_id}`;
+  return animation.preset;
 }
 
 function animationDisplayLabel(animation) {
-  return animation.preset === "asset" ? animation.asset_animation_id : animationLabels[animation.preset];
+  if (animation.preset === "asset") return animation.asset_animation_id;
+  if (animation.preset === "rig") return animation.rig_pose_id;
+  return animationLabels[animation.preset];
 }
 
 function easeAnimation(progress, easing) {
@@ -238,10 +243,14 @@ function evaluateInstanceAnimations(instanceId, animations, time) {
   }, { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 });
 }
 
+function contentAnimation(instance, animations, time) {
+  const clips = animations.filter((item) => item.target === instance.id && ["asset", "rig"].includes(item.preset) && item.start_seconds <= time).sort((a, b) => (a.start_seconds - b.start_seconds) || a.id.localeCompare(b.id));
+  return clips.at(-1) || null;
+}
+
 function assetAnimationFrame(instance, animations, time) {
-  const clips = animations.filter((item) => item.target === instance.id && item.preset === "asset" && item.start_seconds <= time).sort((a, b) => (a.start_seconds - b.start_seconds) || a.id.localeCompare(b.id));
-  const clip = clips.at(-1);
-  if (!clip) return null;
+  const clip = contentAnimation(instance, animations, time);
+  if (clip?.preset !== "asset") return null;
   const asset = state.project.assets.find((item) => item.id === instance.asset_id);
   const capability = asset?.capabilities?.animations?.find((item) => item.id === clip.asset_animation_id);
   if (!capability) return null;
@@ -251,7 +260,51 @@ function assetAnimationFrame(instance, animations, time) {
   return { capability, frame };
 }
 
+function rigPoseState(instance, animations, time) {
+  const clip = contentAnimation(instance, animations, time);
+  if (clip?.preset !== "rig") return null;
+  const asset = state.project.assets.find((item) => item.id === instance.asset_id);
+  const rig = asset?.capabilities?.rig;
+  const pose = rig?.poses?.find((item) => item.id === clip.rig_pose_id);
+  if (!rig || !pose) return null;
+  const elapsed = Math.max(0, time - clip.start_seconds);
+  const progress = clip.loop ? (elapsed % clip.duration_seconds) / clip.duration_seconds : Math.min(1, elapsed / clip.duration_seconds);
+  const rightIndex = Math.max(0, pose.keyframes.findIndex((keyframe) => keyframe.at >= progress));
+  const leftIndex = Math.max(0, rightIndex - 1);
+  const left = pose.keyframes[leftIndex];
+  const right = pose.keyframes[rightIndex];
+  const ratio = right.at === left.at ? 0 : (progress - left.at) / (right.at - left.at);
+  const identity = { x: 0, y: 0, rotation: 0, scale: 1, opacity: 1 };
+  const transforms = {};
+  new Set([...Object.keys(left.transforms || {}), ...Object.keys(right.transforms || {})]).forEach((partId) => {
+    const start = { ...identity, ...(left.transforms?.[partId] || {}) };
+    const end = { ...identity, ...(right.transforms?.[partId] || {}) };
+    transforms[partId] = Object.fromEntries(Object.keys(identity).map((field) => [field, start[field] + (end[field] - start[field]) * ratio]));
+  });
+  return { rig, pose, progress, transforms };
+}
+
+function rigPartMarkup(assetId, part, children, transforms) {
+  const pose = { x: 0, y: 0, rotation: 0, scale: 1, opacity: 1, ...(transforms[part.id] || {}) };
+  const scale = pose.scale === 1 ? "" : ` translate(${part.pivot_x} ${part.pivot_y}) scale(${pose.scale}) translate(${-part.pivot_x} ${-part.pivot_y})`;
+  const descendants = (children.get(part.id) || []).sort((a, b) => (a.z_index - b.z_index) || a.id.localeCompare(b.id)).map((child) => rigPartMarkup(assetId, child, children, transforms)).join("");
+  return `<g transform="translate(${part.x + pose.x} ${part.y + pose.y}) rotate(${pose.rotation} ${part.pivot_x} ${part.pivot_y})${scale}" opacity="${pose.opacity}" data-rig-part="${escapeHtml(part.id)}"><image href="${assetUrl(part.path)}" x="0" y="0" width="${part.width}" height="${part.height}"/>${descendants}</g>`;
+}
+
+function rigImageMarkup(instance, selected) {
+  const children = new Map();
+  selected.rig.parts.forEach((part) => {
+    const parent = part.parent_id || null;
+    if (!children.has(parent)) children.set(parent, []);
+    children.get(parent).push(part);
+  });
+  const content = (children.get(null) || []).sort((a, b) => (a.z_index - b.z_index) || a.id.localeCompare(b.id)).map((part) => rigPartMarkup(instance.asset_id, part, children, selected.transforms)).join("");
+  return `<svg x="0" y="0" width="${instance.width}" height="${instance.height}" viewBox="0 0 ${selected.rig.canvas_width} ${selected.rig.canvas_height}" preserveAspectRatio="none" data-rig-pose="${escapeHtml(selected.pose.id)}" data-rig-progress="${selected.progress.toFixed(6)}">${content}</svg>`;
+}
+
 function instanceImageMarkup(instance, asset, scene) {
+  const rig = state.animationPreviewTime === null ? null : rigPoseState(instance, scene.animations, state.animationPreviewTime);
+  if (rig) return rigImageMarkup(instance, rig);
   const selected = state.animationPreviewTime === null ? null : assetAnimationFrame(instance, scene.animations, state.animationPreviewTime);
   if (!selected) return `<image href="${assetUrl(asset.path)}" x="0" y="0" width="${instance.width}" height="${instance.height}" preserveAspectRatio="xMidYMid meet"/>`;
   const { capability, frame } = selected;
@@ -420,11 +473,14 @@ function addAnimation() {
   if (!(duration > 0) || start < 0) return toast("Animation delay must be zero or more and duration must be positive", true);
   const choice = $("#animation-preset").value;
   const assetAnimationId = choice.startsWith("asset:") ? choice.slice(6) : null;
-  const preset = assetAnimationId ? "asset" : choice;
+  const rigPoseId = choice.startsWith("rig:") ? choice.slice(4) : null;
+  const preset = assetAnimationId ? "asset" : rigPoseId ? "rig" : choice;
   const capability = state.project.assets.find((item) => item.id === instance.asset_id)?.capabilities?.animations?.find((item) => item.id === assetAnimationId);
-  const id = uniqueId(`${instance.id}-${assetAnimationId || preset}`, new Set(scene.animations.map((item) => item.id)));
-  const animation = { id, target: instance.id, preset, start_seconds: start, duration_seconds: duration, easing: $("#animation-easing").value, direction: $("#animation-direction").value, loop: assetAnimationId ? capability?.loop ?? true : $("#animation-loop").checked };
+  const pose = state.project.assets.find((item) => item.id === instance.asset_id)?.capabilities?.rig?.poses?.find((item) => item.id === rigPoseId);
+  const id = uniqueId(`${instance.id}-${assetAnimationId || rigPoseId || preset}`, new Set(scene.animations.map((item) => item.id)));
+  const animation = { id, target: instance.id, preset, start_seconds: start, duration_seconds: duration, easing: $("#animation-easing").value, direction: $("#animation-direction").value, loop: assetAnimationId ? capability?.loop ?? true : rigPoseId ? pose?.loop ?? false : $("#animation-loop").checked };
   if (assetAnimationId) animation.asset_animation_id = assetAnimationId;
+  if (rigPoseId) animation.rig_pose_id = rigPoseId;
   scene.animations.push(animation);
   renderComposer();
   toast("Animation added — preview or save the scene");
@@ -433,13 +489,20 @@ function addAnimation() {
 function applyAnimationChoiceDefaults() {
   const instance = instanceById(state.selectedInstance);
   const choice = $("#animation-preset").value;
-  if (!instance || !choice.startsWith("asset:")) return;
-  const capabilityId = choice.slice(6);
-  const capability = state.project.assets.find((item) => item.id === instance.asset_id)?.capabilities?.animations?.find((item) => item.id === capabilityId);
-  if (!capability) return;
-  const frames = capability.type === "sprite_sheet" ? capability.frame_count : capability.frames.length;
-  $("#animation-duration").value = Math.max(0.1, frames / capability.fps).toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
-  $("#animation-loop").checked = capability.loop ?? true;
+  if (!instance) return;
+  const asset = state.project.assets.find((item) => item.id === instance.asset_id);
+  if (choice.startsWith("asset:")) {
+    const capability = asset?.capabilities?.animations?.find((item) => item.id === choice.slice(6));
+    if (!capability) return;
+    const frames = capability.type === "sprite_sheet" ? capability.frame_count : capability.frames.length;
+    $("#animation-duration").value = Math.max(0.1, frames / capability.fps).toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+    $("#animation-loop").checked = capability.loop ?? true;
+  } else if (choice.startsWith("rig:")) {
+    const pose = asset?.capabilities?.rig?.poses?.find((item) => item.id === choice.slice(4));
+    if (!pose) return;
+    $("#animation-duration").value = pose.duration_seconds ?? 1;
+    $("#animation-loop").checked = pose.loop ?? false;
+  }
 }
 
 function editAnimation(event) {
@@ -461,12 +524,22 @@ function editAnimation(event) {
     if (choice.startsWith("asset:")) {
       animation.preset = "asset";
       animation.asset_animation_id = choice.slice(6);
+      delete animation.rig_pose_id;
       const instance = instanceById(animation.target);
       const capability = state.project.assets.find((item) => item.id === instance.asset_id)?.capabilities?.animations?.find((item) => item.id === animation.asset_animation_id);
       animation.loop = capability?.loop ?? true;
+    } else if (choice.startsWith("rig:")) {
+      animation.preset = "rig";
+      animation.rig_pose_id = choice.slice(4);
+      delete animation.asset_animation_id;
+      const instance = instanceById(animation.target);
+      const pose = state.project.assets.find((item) => item.id === instance.asset_id)?.capabilities?.rig?.poses?.find((item) => item.id === animation.rig_pose_id);
+      animation.loop = pose?.loop ?? false;
+      animation.duration_seconds = pose?.duration_seconds ?? animation.duration_seconds;
     } else {
       animation.preset = choice;
       delete animation.asset_animation_id;
+      delete animation.rig_pose_id;
     }
     renderComposer();
     return;
@@ -597,7 +670,7 @@ async function loadAssets() {
     const assets = await api("/api/assets");
     $("#asset-grid").innerHTML = assets.map((asset) => `<article class="asset-card"><div class="asset-icon">◇</div><h3>${escapeHtml(asset.path.split("/").pop())}</h3><p>${escapeHtml(asset.path)} · ${(asset.size / 1024).toFixed(1)} KB</p></article>`).join("") || '<div class="notice">No assets imported yet.</div>';
     const visualAssets = (state.project?.assets || []).filter((asset) => ["character", "scene", "prop"].includes(asset.kind));
-    $("#capability-asset").innerHTML = '<option value="">Choose a project asset</option>' + visualAssets.map((asset) => `<option value="${escapeHtml(asset.id)}">${escapeHtml(asset.id)} · ${(asset.capabilities?.animations || []).length} animation${(asset.capabilities?.animations || []).length === 1 ? "" : "s"}</option>`).join("");
+    $("#capability-asset").innerHTML = '<option value="">Choose a project asset</option>' + visualAssets.map((asset) => { const animations = (asset.capabilities?.animations || []).length; const poses = (asset.capabilities?.rig?.poses || []).length; return `<option value="${escapeHtml(asset.id)}">${escapeHtml(asset.id)} · ${animations} frame animation${animations === 1 ? "" : "s"} · ${poses} rig pose${poses === 1 ? "" : "s"}</option>`; }).join("");
   } catch (error) { toast(error.message, true); }
 }
 
@@ -630,7 +703,8 @@ async function attachCapabilities() {
   if (!assetId || !file) return toast("Choose a visual asset and manifest JSON", true);
   try {
     const manifest = JSON.parse(await file.text());
-    if (!manifest || !Array.isArray(manifest.animations)) throw new Error("Manifest must contain an animations list");
+    if (!manifest || typeof manifest !== "object" || (!Array.isArray(manifest.animations) && typeof manifest.rig !== "object")) throw new Error("Manifest must contain animations, a rig, or both");
+    if (manifest.animations === undefined) manifest.animations = [];
     const asset = state.project.assets.find((item) => item.id === assetId);
     const previous = asset.capabilities;
     asset.capabilities = manifest;
@@ -642,7 +716,8 @@ async function attachCapabilities() {
       throw error;
     }
     $("#capability-file").value = "";
-    toast(`Attached ${(manifest.animations || []).length} animation capabilities to ${assetId}`);
+    const poseCount = manifest.rig?.poses?.length || 0;
+    toast(`Attached ${manifest.animations.length} frame animations and ${poseCount} rig poses to ${assetId}`);
     await loadAssets();
     renderComposer();
   } catch (error) { toast(error.message, true); }

@@ -208,6 +208,31 @@ Universal transform presets remain available alongside declared asset motion.
 The capability's frame count and FPS provide a natural duration default, while
 each scene clip retains editable delay, duration, and loop settings.
 
+### Layered and skeletal rigs
+
+An optional rig capability turns a visual asset into a hierarchy of reusable
+image layers. Each part owns a local pivot and may attach to another part;
+named poses provide normalized keyframes for local translation, rotation,
+scale, and opacity. Project validation rejects unsafe files, missing parents,
+cycles, unknown keyframed parts, duplicate IDs, and invalid time ranges.
+
+```mermaid
+flowchart LR
+    parts[Imported part images] --> rig[Validated rig hierarchy]
+    poses[Named normalized keyframes] --> rig
+    rig --> picker[Asset-specific pose dropdown]
+    picker --> clip[SceneAnimation<br/>preset: rig]
+    clip --> clock[Scene-local pose clock]
+    clock --> interpolation[Interpolate local transforms]
+    interpolation --> hierarchy[Apply parent then child transforms]
+    hierarchy --> browser[Browser SVG preview]
+    hierarchy --> renderer[Rendered SVG frames]
+```
+
+Rig poses affect pixels inside an instance while universal presets continue to
+affect the complete instance. This separation permits a waving arm and a
+whole-character slide or bounce to run together without browser-only state.
+
 ### Proposed responsibility boundaries
 
 | Component | Owns | Must not own |

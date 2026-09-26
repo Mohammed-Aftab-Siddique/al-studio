@@ -171,6 +171,72 @@ must be unique within the asset. Sprite sheets additionally require positive
 frame dimensions, frame count, and column count. The browser derives the
 natural cycle duration from frame count ÷ FPS; it remains editable per scene.
 
+### Add a Layered Rig
+
+For articulated characters or creatures, the same manifest can include a
+`rig`. A rig is an ordered hierarchy of image parts plus reusable poses. Import
+every part image first, attach the manifest to the base visual asset, then
+select the named pose from the Scene **Animation** dropdown.
+
+```json
+{
+  "animations": [],
+  "rig": {
+    "canvas_width": 512,
+    "canvas_height": 768,
+    "parts": [
+      {
+        "id": "body",
+        "path": "characters/alex-body.svg",
+        "x": 190,
+        "y": 210,
+        "width": 180,
+        "height": 420,
+        "pivot_x": 90,
+        "pivot_y": 90,
+        "z_index": 0
+      },
+      {
+        "id": "right-arm",
+        "path": "characters/alex-right-arm.svg",
+        "parent_id": "body",
+        "x": 145,
+        "y": 70,
+        "width": 70,
+        "height": 250,
+        "pivot_x": 35,
+        "pivot_y": 24,
+        "z_index": 1
+      }
+    ],
+    "poses": [
+      {
+        "id": "wave",
+        "duration_seconds": 1.2,
+        "loop": true,
+        "keyframes": [
+          {"at": 0, "transforms": {"right-arm": {"rotation": -20}}},
+          {"at": 0.5, "transforms": {"right-arm": {"rotation": 35}}},
+          {"at": 1, "transforms": {"right-arm": {"rotation": -20}}}
+        ]
+      }
+    ]
+  }
+}
+```
+
+Part coordinates are local to their parent. Root parts use rig-canvas
+coordinates. Pivots are local to the part image; child parts inherit their
+parent's translation, rotation, scale, and opacity. Keyframe `at` values are
+normalized from `0` to `1`, must be strictly ordered, and every pose must start
+at `0` and end at `1`. A transform may set `x`, `y`, `rotation`, `scale`, and
+`opacity`; omitted values use the neutral transform. The browser uses the
+pose's suggested duration and loop setting as editable scene-clip defaults.
+
+Rig paths receive the same asset-root confinement and image-type checks as
+other capabilities. Parent IDs and keyframed part IDs must exist, part and pose
+IDs must be unique, and cyclic parent relationships are rejected.
+
 ### Compose a Scene in the Browser
 
 1. Select a project and open **Scene**.
@@ -190,8 +256,8 @@ to explicit instances when their scene is edited and saved.
 ### Animate Objects in the Browser
 
 1. Select a placed object on the **Scene** stage.
-2. In **Animation**, choose a preset: fade in/out, slide in, bounce, float,
-   pulse, rotate, or shake. Scene/background assets expose the applicable
+2. In **Animation**, choose a universal preset, an asset's frame animation, or
+   one of its layered-rig poses. Scene/background assets expose the applicable
    fade, slide, and pulse subset.
 3. Set the delay and duration in seconds, direction, easing curve, and whether
    the motion loops. Choose **Add animation**.
@@ -211,6 +277,11 @@ Asset-specific clips use `"preset": "asset"` and identify the declared
 capability with `asset_animation_id`. Universal motion and asset-frame playback
 can run together; the browser preview and final SVG renderer select frames with
 the same deterministic FPS calculation.
+
+Layered-rig clips use `"preset": "rig"` and `rig_pose_id`. They interpolate
+part transforms through the selected pose's normalized keyframes, recursively
+apply the parent/child hierarchy, and hold the final pose unless looping. Rig
+motion can be combined with the same whole-instance universal presets.
 
 ### Write a Story in the Browser
 

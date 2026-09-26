@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
@@ -42,6 +43,11 @@ def _validate_asset_path(path: str, label: str = "asset path") -> None:
 def capability_asset_key(asset_id: str, animation_id: str, frame: int = 0) -> str:
     """Return the internal lookup key for a resolved capability image."""
     return f"@animation:{asset_id}:{animation_id}:{frame}"
+
+
+def rig_part_asset_key(asset_id: str, part_id: str) -> str:
+    """Return the internal lookup key for a resolved rig-part image."""
+    return f"@rig:{asset_id}:{part_id}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +103,156 @@ class AssetAnimationCapability:
         return self.frame_count or len(self.frames)
 
 
+def _finite_number(value: Any, label: str, *, positive: bool = False) -> float:
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+        raise ProjectConfigError(f"{label} must be a finite number")
+    if positive and value <= 0:
+        raise ProjectConfigError(f"{label} must be greater than zero")
+    return float(value)
+
+
+@dataclass(frozen=True, slots=True)
+class RigPart:
+    """One image layer attached to an optional parent in a 2D rig."""
+
+    part_id: str
+    path: str
+    x: float
+    y: float
+    width: float
+    height: float
+    pivot_x: float
+    pivot_y: float
+    parent_id: str | None = None
+    z_index: int = 0
+
+    def __post_init__(self) -> None:
+        _required_string({"part_id": self.part_id}, "part_id")
+        _validate_asset_path(self.path, "rig part path")
+        for label, value, positive in (
+            ("rig part x", self.x, False),
+            ("rig part y", self.y, False),
+            ("rig part width", self.width, True),
+            ("rig part height", self.height, True),
+            ("rig part pivot_x", self.pivot_x, False),
+            ("rig part pivot_y", self.pivot_y, False),
+        ):
+            _finite_number(value, label, positive=positive)
+        if self.parent_id is not None:
+            _required_string({"parent_id": self.parent_id}, "parent_id")
+        if not isinstance(self.z_index, int) or isinstance(self.z_index, bool):
+            raise ProjectConfigError("rig part z_index must be an integer")
+
+
+@dataclass(frozen=True, slots=True)
+class RigPartTransform:
+    """A keyframed local transform for one rig part."""
+
+    x: float = 0.0
+    y: float = 0.0
+    rotation: float = 0.0
+    scale: float = 1.0
+    opacity: float = 1.0
+
+    def __post_init__(self) -> None:
+        for label, value in (
+            ("rig transform x", self.x),
+            ("rig transform y", self.y),
+            ("rig transform rotation", self.rotation),
+            ("rig transform scale", self.scale),
+            ("rig transform opacity", self.opacity),
+        ):
+            _finite_number(value, label)
+        if self.scale <= 0:
+            raise ProjectConfigError("rig transform scale must be greater than zero")
+        if not 0 <= self.opacity <= 1:
+            raise ProjectConfigError("rig transform opacity must be between zero and one")
+
+
+@dataclass(frozen=True, slots=True)
+class RigKeyframe:
+    """A normalized pose sample with transforms keyed by part identifier."""
+
+    at: float
+    transforms: tuple[tuple[str, RigPartTransform], ...]
+
+    def __post_init__(self) -> None:
+        _finite_number(self.at, "rig keyframe at")
+        if not 0 <= self.at <= 1:
+            raise ProjectConfigError("rig keyframe at must be between zero and one")
+        identifiers = tuple(part_id for part_id, _ in self.transforms)
+        for part_id in identifiers:
+            _required_string({"part_id": part_id}, "part_id")
+        if len(identifiers) != len(set(identifiers)):
+            raise ProjectConfigError("rig keyframe part identifiers must be unique")
+
+
+@dataclass(frozen=True, slots=True)
+class RigPose:
+    """A named deterministic animation made from normalized keyframes."""
+
+    pose_id: str
+    keyframes: tuple[RigKeyframe, ...]
+    duration_seconds: float = 1.0
+    loop: bool = False
+
+    def __post_init__(self) -> None:
+        _required_string({"pose_id": self.pose_id}, "pose_id")
+        _finite_number(self.duration_seconds, "rig pose duration_seconds", positive=True)
+        if not isinstance(self.loop, bool):
+            raise ProjectConfigError("rig pose loop must be a boolean")
+        if len(self.keyframes) < 2:
+            raise ProjectConfigError("rig pose requires at least two keyframes")
+        points = tuple(keyframe.at for keyframe in self.keyframes)
+        if points != tuple(sorted(set(points))):
+            raise ProjectConfigError("rig pose keyframes must be strictly ordered")
+        if points[0] != 0 or points[-1] != 1:
+            raise ProjectConfigError("rig pose keyframes must start at zero and end at one")
+
+
+@dataclass(frozen=True, slots=True)
+class AssetRig:
+    """A validated layered hierarchy and its reusable poses."""
+
+    canvas_width: float
+    canvas_height: float
+    parts: tuple[RigPart, ...]
+    poses: tuple[RigPose, ...]
+
+    def __post_init__(self) -> None:
+        _finite_number(self.canvas_width, "rig canvas_width", positive=True)
+        _finite_number(self.canvas_height, "rig canvas_height", positive=True)
+        if not self.parts:
+            raise ProjectConfigError("rig requires at least one part")
+        part_ids = tuple(part.part_id for part in self.parts)
+        if len(part_ids) != len(set(part_ids)):
+            raise ProjectConfigError("rig part identifiers must be unique")
+        known_parts = set(part_ids)
+        parents = {part.part_id: part.parent_id for part in self.parts}
+        for part in self.parts:
+            if part.parent_id is not None and part.parent_id not in known_parts:
+                raise ProjectConfigError(
+                    f"rig part {part.part_id} has unknown parent: {part.parent_id}"
+                )
+            current = part.part_id
+            visited: set[str] = set()
+            while parents[current] is not None:
+                if current in visited:
+                    raise ProjectConfigError("rig part hierarchy must not contain a cycle")
+                visited.add(current)
+                current = cast(str, parents[current])
+        pose_ids = tuple(pose.pose_id for pose in self.poses)
+        if len(pose_ids) != len(set(pose_ids)):
+            raise ProjectConfigError("rig pose identifiers must be unique")
+        for pose in self.poses:
+            for keyframe in pose.keyframes:
+                for part_id, _ in keyframe.transforms:
+                    if part_id not in known_parts:
+                        raise ProjectConfigError(
+                            f"rig pose {pose.pose_id} references unknown part: {part_id}"
+                        )
+
+
 @dataclass(frozen=True, slots=True)
 class RenderSettings:
     width: int = 1280
@@ -119,13 +275,18 @@ class AssetConfig:
     kind: str
     path: str
     animations: tuple[AssetAnimationCapability, ...] = ()
+    rig: AssetRig | None = None
 
     def __post_init__(self) -> None:
         _required_string({"asset_id": self.asset_id}, "asset_id")
         if self.kind not in ASSET_KINDS:
             raise ProjectConfigError(f"asset kind must be one of: {', '.join(sorted(ASSET_KINDS))}")
         _validate_asset_path(self.path)
-        if self.animations and self.kind not in {"character", "scene", "prop"}:
+        if (self.animations or self.rig is not None) and self.kind not in {
+            "character",
+            "scene",
+            "prop",
+        }:
             raise ProjectConfigError("only visual assets can declare animation capabilities")
         animation_ids = tuple(animation.animation_id for animation in self.animations)
         if len(animation_ids) != len(set(animation_ids)):
@@ -166,15 +327,22 @@ class ProjectConfig:
                     )
             instances = {instance.instance_id: instance for instance in scene.instances}
             for animation in scene.animations:
-                if animation.preset != "asset":
+                if animation.preset not in {"asset", "rig"}:
                     continue
                 instance = instances[animation.target_instance_id]
                 asset = asset_by_id[instance.asset_id]
-                capability_ids = {capability.animation_id for capability in asset.animations}
-                if animation.asset_animation_id not in capability_ids:
+                if animation.preset == "asset":
+                    capability_ids = {capability.animation_id for capability in asset.animations}
+                    if animation.asset_animation_id in capability_ids:
+                        continue
                     raise ProjectConfigError(
                         f"asset {asset.asset_id} does not support animation: "
                         f"{animation.asset_animation_id}"
+                    )
+                pose_ids = {pose.pose_id for pose in asset.rig.poses} if asset.rig else set()
+                if animation.rig_pose_id not in pose_ids:
+                    raise ProjectConfigError(
+                        f"asset {asset.asset_id} does not support rig pose: {animation.rig_pose_id}"
                     )
 
     @staticmethod
@@ -243,11 +411,15 @@ class ProjectConfig:
             isinstance(item, dict) for item in animations
         ):
             raise ProjectConfigError("asset capability animations must be a list of objects")
+        rig_data = capabilities.get("rig")
+        if rig_data is not None and not isinstance(rig_data, dict):
+            raise ProjectConfigError("asset rig must be an object")
         return AssetConfig(
             asset_id=_required_string(data, "id"),
             kind=_required_string(data, "kind"),
             path=_required_string(data, "path"),
             animations=tuple(ProjectConfig._asset_animation_from_dict(item) for item in animations),
+            rig=ProjectConfig._rig_from_dict(rig_data) if rig_data is not None else None,
         )
 
     @staticmethod
@@ -267,6 +439,68 @@ class ProjectConfig:
             frame_height=data.get("frame_height"),
             frame_count=data.get("frame_count"),
             columns=data.get("columns"),
+        )
+
+    @staticmethod
+    def _rig_from_dict(data: dict[str, Any]) -> AssetRig:
+        parts = ProjectConfig._list(data, "parts")
+        poses = ProjectConfig._list(data, "poses")
+        return AssetRig(
+            canvas_width=cast(float, data.get("canvas_width")),
+            canvas_height=cast(float, data.get("canvas_height")),
+            parts=tuple(ProjectConfig._rig_part_from_dict(item) for item in parts),
+            poses=tuple(ProjectConfig._rig_pose_from_dict(item) for item in poses),
+        )
+
+    @staticmethod
+    def _rig_part_from_dict(data: dict[str, Any]) -> RigPart:
+        return RigPart(
+            part_id=_required_string(data, "id"),
+            path=_required_string(data, "path"),
+            x=cast(float, data.get("x", 0.0)),
+            y=cast(float, data.get("y", 0.0)),
+            width=cast(float, data.get("width")),
+            height=cast(float, data.get("height")),
+            pivot_x=cast(float, data.get("pivot_x", 0.0)),
+            pivot_y=cast(float, data.get("pivot_y", 0.0)),
+            parent_id=data.get("parent_id"),
+            z_index=data.get("z_index", 0),
+        )
+
+    @staticmethod
+    def _rig_pose_from_dict(data: dict[str, Any]) -> RigPose:
+        keyframes = ProjectConfig._list(data, "keyframes")
+        return RigPose(
+            pose_id=_required_string(data, "id"),
+            duration_seconds=cast(float, data.get("duration_seconds", 1.0)),
+            loop=data.get("loop", False),
+            keyframes=tuple(ProjectConfig._rig_keyframe_from_dict(item) for item in keyframes),
+        )
+
+    @staticmethod
+    def _rig_keyframe_from_dict(data: dict[str, Any]) -> RigKeyframe:
+        transforms = data.get("transforms", {})
+        if not isinstance(transforms, dict) or not all(
+            isinstance(part_id, str) and isinstance(value, dict)
+            for part_id, value in transforms.items()
+        ):
+            raise ProjectConfigError("rig keyframe transforms must be an object")
+        return RigKeyframe(
+            at=cast(float, data.get("at")),
+            transforms=tuple(
+                (part_id, ProjectConfig._rig_transform_from_dict(value))
+                for part_id, value in transforms.items()
+            ),
+        )
+
+    @staticmethod
+    def _rig_transform_from_dict(data: dict[str, Any]) -> RigPartTransform:
+        return RigPartTransform(
+            x=data.get("x", 0.0),
+            y=data.get("y", 0.0),
+            rotation=data.get("rotation", 0.0),
+            scale=data.get("scale", 1.0),
+            opacity=data.get("opacity", 1.0),
         )
 
     @staticmethod
@@ -325,6 +559,7 @@ class ProjectConfig:
             direction=data.get("direction", "left"),
             loop=data.get("loop", False),
             asset_animation_id=data.get("asset_animation_id"),
+            rig_pose_id=data.get("rig_pose_id"),
         )
 
     @staticmethod
@@ -413,4 +648,16 @@ class ProjectAssetManager:
                     resolved[
                         capability_asset_key(asset.asset_id, animation.animation_id, index)
                     ] = candidate
+            if asset.rig is not None:
+                for part in asset.rig.parts:
+                    candidate = (self.asset_root / part.path).resolve()
+                    if not candidate.is_relative_to(self.asset_root):
+                        raise AssetResolutionError(f"rig part path escapes asset root: {part.path}")
+                    if not candidate.is_file():
+                        raise AssetResolutionError(f"rig part file not found: {part.path}")
+                    if candidate.suffix.lower() not in IMAGE_EXTENSIONS:
+                        raise AssetResolutionError(
+                            f"rig part has incompatible extension: {part.path}"
+                        )
+                    resolved[rig_part_asset_key(asset.asset_id, part.part_id)] = candidate
         return resolved

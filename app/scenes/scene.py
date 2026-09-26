@@ -14,6 +14,7 @@ ANIMATION_PRESETS = frozenset(
         "rotate",
         "shake",
         "asset",
+        "rig",
     }
 )
 ANIMATION_EASINGS = frozenset({"linear", "ease-in", "ease-out", "ease-in-out"})
@@ -100,6 +101,7 @@ class SceneAnimation:
     direction: str = "left"
     loop: bool = False
     asset_animation_id: str | None = None
+    rig_pose_id: str | None = None
 
     def __post_init__(self) -> None:
         _validate_identifier("animation_id", self.animation_id)
@@ -136,8 +138,16 @@ class SceneAnimation:
             if self.asset_animation_id is None:
                 raise ValueError("asset animation requires asset_animation_id")
             _validate_identifier("asset_animation_id", self.asset_animation_id)
-        elif self.asset_animation_id is not None:
-            raise ValueError("universal preset must not define asset_animation_id")
+            if self.rig_pose_id is not None:
+                raise ValueError("asset animation must not define rig_pose_id")
+        elif self.preset == "rig":
+            if self.rig_pose_id is None:
+                raise ValueError("rig animation requires rig_pose_id")
+            _validate_identifier("rig_pose_id", self.rig_pose_id)
+            if self.asset_animation_id is not None:
+                raise ValueError("rig animation must not define asset_animation_id")
+        elif self.asset_animation_id is not None or self.rig_pose_id is not None:
+            raise ValueError("universal preset must not define capability identifiers")
 
 
 @dataclass(frozen=True, slots=True)

@@ -140,6 +140,7 @@ class DialogueTimelineBuilder:
                             "target": animation.target_instance_id,
                             "preset": animation.preset,
                             "asset_animation_id": animation.asset_animation_id,
+                            "rig_pose_id": animation.rig_pose_id,
                             "loop": animation.loop,
                         },
                         track="visual",

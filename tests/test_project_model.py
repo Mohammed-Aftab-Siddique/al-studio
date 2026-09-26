@@ -9,6 +9,7 @@ from app.project import (
     ProjectConfig,
     ProjectConfigError,
     capability_asset_key,
+    rig_part_asset_key,
 )
 
 ASSET_ROOT = Path("assets")
@@ -282,6 +283,109 @@ def test_asset_capability_paths_and_scene_references_are_validated() -> None:
                 "scenes": [],
             }
         )
+
+
+def test_layered_rig_manifest_resolves_parts_and_validates_pose_references(
+    tmp_path: Path,
+) -> None:
+    for relative in (
+        "scenes/room.svg",
+        "characters/hero.svg",
+        "characters/body.svg",
+        "characters/arm.svg",
+    ):
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("<svg/>", encoding="utf-8")
+    raw = {
+        "schema_version": 1,
+        "name": "rigged",
+        "assets": [
+            {"id": "room", "kind": "scene", "path": "scenes/room.svg"},
+            {
+                "id": "hero",
+                "kind": "character",
+                "path": "characters/hero.svg",
+                "capabilities": {
+                    "rig": {
+                        "canvas_width": 200,
+                        "canvas_height": 300,
+                        "parts": [
+                            {
+                                "id": "body",
+                                "path": "characters/body.svg",
+                                "width": 120,
+                                "height": 240,
+                                "pivot_x": 60,
+                                "pivot_y": 80,
+                            },
+                            {
+                                "id": "arm",
+                                "path": "characters/arm.svg",
+                                "parent_id": "body",
+                                "x": 90,
+                                "y": 70,
+                                "width": 30,
+                                "height": 120,
+                                "pivot_x": 15,
+                                "pivot_y": 10,
+                            },
+                        ],
+                        "poses": [
+                            {
+                                "id": "wave",
+                                "duration_seconds": 1.2,
+                                "loop": True,
+                                "keyframes": [
+                                    {"at": 0, "transforms": {"arm": {"rotation": -20}}},
+                                    {"at": 1, "transforms": {"arm": {"rotation": 40}}},
+                                ],
+                            }
+                        ],
+                    }
+                },
+            },
+        ],
+        "characters": [],
+        "scenes": [
+            {
+                "id": "opening",
+                "background_asset_id": "room",
+                "instances": [
+                    {
+                        "id": "hero-left",
+                        "asset_id": "hero",
+                        "x": 0,
+                        "y": 0,
+                        "width": 200,
+                        "height": 300,
+                    }
+                ],
+                "animations": [
+                    {
+                        "id": "hero-wave",
+                        "target": "hero-left",
+                        "preset": "rig",
+                        "rig_pose_id": "wave",
+                        "duration_seconds": 1.2,
+                        "loop": True,
+                    }
+                ],
+            }
+        ],
+    }
+
+    project = ProjectConfig.from_dict(raw)
+    resolved = ProjectAssetManager(tmp_path).validate_assets(project)
+
+    assert project.assets[1].rig is not None
+    assert project.assets[1].rig.poses[0].duration_seconds == 1.2
+    assert resolved[rig_part_asset_key("hero", "body")].name == "body.svg"
+    assert resolved[rig_part_asset_key("hero", "arm")].name == "arm.svg"
+
+    raw["scenes"][0]["animations"][0]["rig_pose_id"] = "missing"
+    with pytest.raises(ProjectConfigError, match="does not support rig pose: missing"):
+        ProjectConfig.from_dict(raw)
 
     with pytest.raises(ProjectConfigError, match="asset hero does not support animation: missing"):
         ProjectConfig.from_dict(

@@ -7,7 +7,15 @@ from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 
-from app.project import AssetAnimationCapability, ProjectConfig, capability_asset_key
+from app.project import (
+    AssetAnimationCapability,
+    ProjectConfig,
+    RigPart,
+    RigPartTransform,
+    RigPose,
+    capability_asset_key,
+    rig_part_asset_key,
+)
 from app.scenes import SceneAnimation, SceneInstance
 from app.script.timeline import TimelineEvent
 
@@ -244,6 +252,9 @@ class FrameRenderer:
         scene_animations: tuple[SceneAnimation, ...],
         scene_time: float,
     ) -> str:
+        active = self._content_animation_at(instance, scene_animations, scene_time)
+        if active is not None and active.preset == "rig":
+            return self._rig_image(instance, active, scene_time, width, height)
         selected = self._asset_animation_at(instance, scene_animations, scene_time)
         if selected is None:
             return self._image(self.asset_paths[instance.asset_id], 0, 0, width, height)
@@ -262,22 +273,34 @@ class FrameRenderer:
             )
         return self._sprite_sheet_image(path, capability, frame, width, height)
 
+    @staticmethod
+    def _content_animation_at(
+        instance: SceneInstance,
+        animations: tuple[SceneAnimation, ...],
+        scene_time: float,
+    ) -> SceneAnimation | None:
+        candidates = [
+            animation
+            for animation in animations
+            if animation.target_instance_id == instance.instance_id
+            and animation.preset in {"asset", "rig"}
+            and animation.start_seconds <= scene_time
+        ]
+        return (
+            max(candidates, key=lambda item: (item.start_seconds, item.animation_id))
+            if candidates
+            else None
+        )
+
     def _asset_animation_at(
         self,
         instance: SceneInstance,
         animations: tuple[SceneAnimation, ...],
         scene_time: float,
     ) -> tuple[AssetAnimationCapability, int] | None:
-        candidates = [
-            animation
-            for animation in animations
-            if animation.target_instance_id == instance.instance_id
-            and animation.preset == "asset"
-            and animation.start_seconds <= scene_time
-        ]
-        if not candidates:
+        animation = self._content_animation_at(instance, animations, scene_time)
+        if animation is None or animation.preset != "asset":
             return None
-        animation = max(candidates, key=lambda item: (item.start_seconds, item.animation_id))
         capability = next(
             item
             for item in self.assets[instance.asset_id].animations
@@ -290,6 +313,104 @@ class FrameRenderer:
         else:
             frame = min(frame, capability.total_frames - 1)
         return capability, frame
+
+    def _rig_image(
+        self,
+        instance: SceneInstance,
+        animation: SceneAnimation,
+        scene_time: float,
+        width: float,
+        height: float,
+    ) -> str:
+        rig = self.assets[instance.asset_id].rig
+        if rig is None:
+            return self._image(self.asset_paths[instance.asset_id], 0, 0, width, height)
+        pose = next(item for item in rig.poses if item.pose_id == animation.rig_pose_id)
+        elapsed = max(0.0, scene_time - animation.start_seconds)
+        if animation.loop:
+            progress = (elapsed % animation.duration_seconds) / animation.duration_seconds
+        else:
+            progress = min(1.0, elapsed / animation.duration_seconds)
+        transforms = self._rig_transforms(pose, progress)
+        children: dict[str | None, list[RigPart]] = {}
+        for part in rig.parts:
+            children.setdefault(part.parent_id, []).append(part)
+        content = "".join(
+            self._rig_part_svg(instance.asset_id, part, children, transforms)
+            for part in sorted(
+                children.get(None, []), key=lambda item: (item.z_index, item.part_id)
+            )
+        )
+        return (
+            f'<svg x="0" y="0" width="{width}" height="{height}" '
+            f'viewBox="0 0 {rig.canvas_width} {rig.canvas_height}" '
+            'preserveAspectRatio="none" '
+            f'data-rig-pose="{escape(pose.pose_id)}" data-rig-progress="{progress:.6f}">'
+            f"{content}</svg>"
+        )
+
+    @staticmethod
+    def _rig_transforms(pose: RigPose, progress: float) -> dict[str, RigPartTransform]:
+        right_index = next(
+            (index for index, keyframe in enumerate(pose.keyframes) if keyframe.at >= progress),
+            len(pose.keyframes) - 1,
+        )
+        left_index = max(0, right_index - 1)
+        left = pose.keyframes[left_index]
+        right = pose.keyframes[right_index]
+        span = right.at - left.at
+        ratio = 0.0 if span == 0 else (progress - left.at) / span
+        left_transforms = dict(left.transforms)
+        right_transforms = dict(right.transforms)
+        identity = RigPartTransform()
+        return {
+            part_id: RigPartTransform(
+                x=start.x + (end.x - start.x) * ratio,
+                y=start.y + (end.y - start.y) * ratio,
+                rotation=start.rotation + (end.rotation - start.rotation) * ratio,
+                scale=start.scale + (end.scale - start.scale) * ratio,
+                opacity=start.opacity + (end.opacity - start.opacity) * ratio,
+            )
+            for part_id in left_transforms.keys() | right_transforms.keys()
+            for start, end in (
+                (left_transforms.get(part_id, identity), right_transforms.get(part_id, identity)),
+            )
+        }
+
+    def _rig_part_svg(
+        self,
+        asset_id: str,
+        part: RigPart,
+        children: dict[str | None, list[RigPart]],
+        transforms: dict[str, RigPartTransform],
+    ) -> str:
+        pose = transforms.get(part.part_id, RigPartTransform())
+        transform = (
+            f"translate({part.x + pose.x} {part.y + pose.y}) "
+            f"rotate({pose.rotation} {part.pivot_x} {part.pivot_y})"
+        )
+        if pose.scale != 1:
+            transform += (
+                f" translate({part.pivot_x} {part.pivot_y}) scale({pose.scale})"
+                f" translate({-part.pivot_x} {-part.pivot_y})"
+            )
+        image = self._image(
+            self.asset_paths[rig_part_asset_key(asset_id, part.part_id)],
+            0,
+            0,
+            part.width,
+            part.height,
+        )
+        descendants = "".join(
+            self._rig_part_svg(asset_id, child, children, transforms)
+            for child in sorted(
+                children.get(part.part_id, []), key=lambda item: (item.z_index, item.part_id)
+            )
+        )
+        return (
+            f'<g transform="{transform}" opacity="{pose.opacity}" '
+            f'data-rig-part="{escape(part.part_id)}">{image}{descendants}</g>'
+        )
 
     def _sprite_sheet_image(
         self,

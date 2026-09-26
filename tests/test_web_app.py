@@ -72,6 +72,8 @@ def test_web_shell_and_static_assets_are_available(tmp_path: Path) -> None:
     assert "previewAnimations" in script.text
     assert "sceneTimelineData" in script.text
     assert "assetAnimationFrame" in script.text
+    assert "rigPoseState" in script.text
+    assert "rigImageMarkup" in script.text
     assert "attachCapabilities" in script.text
 
 
@@ -153,6 +155,8 @@ def test_scene_layout_can_be_saved_and_asset_previews_are_confined(tmp_path: Pat
     create_demo(app)
     imported = call(app, "POST", "/api/assets/characters?filename=hero.svg", content=b"<svg/>")
     sheet = call(app, "POST", "/api/assets/characters?filename=hero-walk.png", content=b"png")
+    body = call(app, "POST", "/api/assets/characters?filename=hero-body.svg", content=b"<svg/>")
+    arm = call(app, "POST", "/api/assets/characters?filename=hero-arm.svg", content=b"<svg/>")
     project = call(app, "GET", "/api/projects/demo-story").json()["project"]
     project["assets"].append(
         {
@@ -171,7 +175,42 @@ def test_scene_layout_can_be_saved_and_asset_previews_are_confined(tmp_path: Pat
                         "columns": 2,
                         "fps": 8,
                     }
-                ]
+                ],
+                "rig": {
+                    "canvas_width": 200,
+                    "canvas_height": 300,
+                    "parts": [
+                        {
+                            "id": "body",
+                            "path": body.json()["path"],
+                            "width": 120,
+                            "height": 240,
+                            "pivot_x": 60,
+                            "pivot_y": 80,
+                        },
+                        {
+                            "id": "arm",
+                            "path": arm.json()["path"],
+                            "parent_id": "body",
+                            "x": 90,
+                            "y": 70,
+                            "width": 30,
+                            "height": 120,
+                            "pivot_x": 15,
+                            "pivot_y": 10,
+                        },
+                    ],
+                    "poses": [
+                        {
+                            "id": "wave",
+                            "duration_seconds": 1,
+                            "keyframes": [
+                                {"at": 0, "transforms": {"arm": {"rotation": -20}}},
+                                {"at": 1, "transforms": {"arm": {"rotation": 40}}},
+                            ],
+                        }
+                    ],
+                },
             },
         }
     )
@@ -211,6 +250,17 @@ def test_scene_layout_can_be_saved_and_asset_previews_are_confined(tmp_path: Pat
             "direction": "left",
             "loop": True,
         },
+        {
+            "id": "hero-wave",
+            "target": "hero-left",
+            "preset": "rig",
+            "rig_pose_id": "wave",
+            "start_seconds": 2,
+            "duration_seconds": 1,
+            "easing": "linear",
+            "direction": "left",
+            "loop": False,
+        },
     ]
 
     saved = call(app, "PUT", "/api/projects/demo-story", json={"content": project})
@@ -222,6 +272,7 @@ def test_scene_layout_can_be_saved_and_asset_previews_are_confined(tmp_path: Pat
     assert reopened["scenes"][0]["instances"][0]["x"] == 80
     assert reopened["scenes"][0]["animations"][0]["preset"] == "slide-in"
     assert reopened["scenes"][0]["animations"][1]["asset_animation_id"] == "walk"
+    assert reopened["scenes"][0]["animations"][2]["rig_pose_id"] == "wave"
     assert preview.content == b"<svg/>"
     assert escaped.status_code in {400, 404}
 
