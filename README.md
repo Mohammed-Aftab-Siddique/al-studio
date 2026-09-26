@@ -310,6 +310,40 @@ replacing `script.json`. Audio/music imported while a project is open is
 automatically registered with that project and becomes selectable in audio
 blocks.
 
+### Explore Ideas in the Creative Lab
+
+The **Creative lab** is optional and never runs during validation or rendering.
+Its built-in `offline-template` provider uses deterministic local templates,
+requires no account or network connection, and is intended as a safe baseline
+for brainstorming rather than a claim of model-generated originality.
+
+1. Open a project, then choose **Creative lab**.
+2. Select **Script draft**, **Background concept**, **Character concept**, or
+   **Creative suggestions**.
+3. Describe the idea in up to 1,000 characters and choose **Generate editable
+   draft**. This click is the opt-in boundary: no provider is called before it.
+4. Edit the returned JSON directly.
+5. Choose **Save reusable draft** to store the current JSON under
+   `projects/<project>/creative/`. Identical content resolves to the same
+   content-addressed filename.
+6. Choose **Apply to project** when appropriate. Script drafts are validated
+   and appended to their target scene; character drafts become validated
+   character configuration. Background concepts and suggestions are attached
+   to the reusable draft library for later asset production.
+
+Creative JSON is not loaded by `RenderPipeline`, so saved concepts cannot make
+an otherwise renderable project depend on an assistant. Convert background or
+character visual plans into ordinary SVG, PNG, or WebP assets and import them
+through the normal Assets workflow.
+
+Provider implementations conform to `CreativeProvider` in `app/creative.py`.
+`create_app(..., creative_provider_factory=...)` accepts another local or
+remote adapter without changing the UI, project schema, or render pipeline.
+Adapters receive only a compact project name/scene/character summary after the
+user requests generation. The offline provider remains the zero-configuration
+alternative; remote adapters should document their own credentials, network
+use, privacy policy, and nondeterminism.
+
 ### Preview a Voice in the Browser
 
 1. Open **Voice lab**.

@@ -11,6 +11,7 @@
       <button class="nav-item active" data-view="projects"><span>▦</span> Projects</button>
       <button class="nav-item" data-view="scene"><span>◫</span> Scene</button>
       <button class="nav-item" data-view="script"><span>✦</span> Script</button>
+      <button class="nav-item" data-view="creative"><span>◈</span> Creative lab</button>
       <button class="nav-item" data-view="assets"><span>◇</span> Assets</button>
       <button class="nav-item" data-view="voice"><span>◖</span> Voice lab</button>
       <button class="nav-item" data-view="render"><span>▷</span> Render</button>
@@ -45,6 +46,14 @@
       <div class="panel import-panel"><label>Asset category<select id="asset-category"><option value="characters">Character image</option><option value="scenes">Scene background</option><option value="props">Prop image</option><option value="audio">Sound effect</option><option value="music">Music</option></select></label><label class="file-drop" for="asset-file"><strong>Choose local files</strong><span>PNG, SVG, WebP, WAV, MP3, or OGG · max 50 MB each</span><input id="asset-file" type="file" multiple></label><button class="primary" id="import-asset">Import assets</button></div>
       <div class="panel capability-panel"><div><p class="eyebrow accent">ANIMATION CAPABILITIES</p><h3>Attach an asset manifest</h3><p>Declare sprite sheets, frame sequences, or a layered rig with named poses. Referenced images must already be imported under <code>assets/</code>.</p></div><label>Visual asset<select id="capability-asset"><option value="">Choose a project asset</option></select></label><label class="file-drop" for="capability-file"><strong>Choose manifest JSON</strong><span>Frame animations, a layered rig, or both</span><input id="capability-file" type="file" accept="application/json,.json"></label><button class="secondary" id="attach-capabilities">Attach manifest</button></div>
       <div class="asset-grid" id="asset-grid"></div>
+    </section>
+    <section class="view" id="view-creative">
+      <div class="section-heading"><div><p class="eyebrow accent">OPTIONAL CREATIVE ASSISTANCE</p><h2>Explore ideas without changing the render engine.</h2><p>Nothing is generated until you ask. Review and edit every draft before saving or applying it.</p></div></div>
+      <div class="creative-layout">
+        <div class="panel creative-controls form-stack"><div class="status-line good"><i></i><span id="creative-provider">Offline template provider · no network</span></div><label>Helper<select id="creative-kind"><option value="script">Script draft</option><option value="background">Background concept</option><option value="character">Character concept</option><option value="suggestions">Creative suggestions</option></select></label><label>What should the helper explore?<textarea id="creative-prompt" rows="8" maxlength="1000" placeholder="A shy inventor discovers that the city lights answer her questions"></textarea></label><button class="primary" id="generate-creative">Generate editable draft</button><p class="creative-note">The built-in provider is deterministic and offline. Provider adapters receive project context only after this button is selected.</p></div>
+        <div class="panel creative-result"><div class="creative-result-head"><div><p class="eyebrow">EDITABLE RESULT</p><h3 id="creative-result-title">No draft yet</h3></div><span id="creative-dirty-state">Not saved</span></div><textarea id="creative-result" rows="22" spellcheck="false" placeholder="Generated JSON will appear here."></textarea><div class="creative-actions"><button class="secondary" id="save-creative" disabled>Save reusable draft</button><button class="primary" id="apply-creative" disabled>Apply to project</button></div></div>
+      </div>
+      <div class="section-heading creative-saved-heading"><div><h2>Saved drafts</h2><p>Reusable JSON concepts live inside the selected project and are never required at render time.</p></div><button class="quiet" id="refresh-creative">↻ Refresh</button></div><div class="asset-grid" id="creative-saved"></div>
     </section>
     <section class="view" id="view-voice">
       <div class="section-heading"><div><p class="eyebrow accent">VOICE LAB</p><h2>Hear the character before you render.</h2><p>Generate a local WAV preview using the same voice engine as the final pipeline.</p></div></div>

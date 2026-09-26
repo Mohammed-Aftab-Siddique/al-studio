@@ -68,6 +68,8 @@ def test_web_shell_and_static_assets_are_available(tmp_path: Path) -> None:
     assert "timeline-visual" in home.text
     assert 'data-add="ambience"' in home.text
     assert "attach-capabilities" in home.text
+    assert "Creative lab" in home.text
+    assert "creative-result" in home.text
     assert "startRender" in script.text
     assert "previewAnimations" in script.text
     assert "sceneTimelineData" in script.text
@@ -75,6 +77,52 @@ def test_web_shell_and_static_assets_are_available(tmp_path: Path) -> None:
     assert "rigPoseState" in script.text
     assert "rigImageMarkup" in script.text
     assert "attachCapabilities" in script.text
+    assert "generateCreativeDraft" in script.text
+    assert "applyCreativeDraft" in script.text
+
+
+def test_optional_creative_drafts_are_editable_saved_and_render_independent(
+    tmp_path: Path,
+) -> None:
+    app = make_app(tmp_path)
+    create_demo(app)
+
+    generated = call(
+        app,
+        "POST",
+        "/api/projects/demo-story/creative",
+        json={"kind": "script", "prompt": "a lighthouse that remembers every visitor"},
+    )
+    invalid = call(
+        app,
+        "POST",
+        "/api/projects/demo-story/creative",
+        json={"kind": "script", "prompt": "   "},
+    )
+    draft = generated.json()["draft"]
+    draft["events"][0]["description"] = "An edited opening chosen by the user."
+    saved = call(
+        app,
+        "POST",
+        "/api/projects/demo-story/creative/save",
+        json={"kind": "script", "draft": draft},
+    )
+    listed = call(app, "GET", "/api/projects/demo-story/creative")
+    validation = call(app, "POST", "/api/projects/demo-story/validate")
+
+    assert generated.status_code == 200
+    assert generated.json()["provider"] == "offline-template"
+    assert generated.json()["render_dependency"] is False
+    assert invalid.status_code == 422
+    assert saved.status_code == 201
+    assert saved.json()["path"].startswith("projects/demo-story/creative/")
+    assert listed.json() == [{"name": saved.json()["name"], "path": saved.json()["path"]}]
+    saved_path = tmp_path / saved.json()["path"]
+    assert (
+        json.loads(saved_path.read_text(encoding="utf-8"))["draft"]["events"][0]["description"]
+        == "An edited opening chosen by the user."
+    )
+    assert validation.json()["valid"] is True
 
 
 def test_project_creation_opening_and_validated_script_save(tmp_path: Path) -> None:

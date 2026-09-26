@@ -1,8 +1,9 @@
 # AL Studio — Low-Level Design
 
 > Pipeline design aligned with `GOALS.md`. Status reflects the repository on
-> 2026-09-14: the deterministic render pipeline, CLI, and first local browser
-> milestone are implemented and tested.
+> 2026-09-26: the deterministic render pipeline, CLI, local browser app,
+> composition/animation system, and optional creative-assistance layer are
+> implemented and tested.
 
 ## Design Principles
 
@@ -40,6 +41,8 @@ flowchart TD
     cli[CLI / Automation]
     web[Local Browser App]
     api[Loopback API + background jobs]
+    creative[Optional CreativeProvider]
+    drafts[Editable reusable drafts]
 
     input --> validate
     validate --> manager
@@ -72,10 +75,13 @@ flowchart TD
     api --> compositor
     mp4 --> api
     api --> web
+    web -. explicit request .-> creative
+    creative --> drafts
+    drafts -. explicit apply .-> input
 
     classDef implemented fill:#c8e6c9,stroke:#2e7d32,color:#1b5e20;
     classDef planned fill:#e3f2fd,stroke:#1565c0,color:#0d47a1;
-    class kokoro,validate,manager,schema,script,timeline,character,voice,audioLines,input,scene,animation,frames,audio,mix,captions,subtitles,compositor,mp4,cli,web,api implemented;
+    class kokoro,validate,manager,schema,script,timeline,character,voice,audioLines,input,scene,animation,frames,audio,mix,captions,subtitles,compositor,mp4,cli,web,api,creative,drafts implemented;
 ```
 
 Green is implemented today. The CLI and loopback browser API both call the
@@ -107,6 +113,31 @@ The HTTP layer accepts only project slugs and root-relative media paths.
 Asset imports sanitize filenames, enforce category-specific extensions and a
 50 MB limit, reject duplicates, and resolve every target beneath `assets/`.
 Generated media is served only from `output/`.
+
+## Optional Creative-Assistance Boundary
+
+Creative assistance is isolated behind the `CreativeProvider` protocol. The
+browser calls it only after an explicit Generate action and passes a compact
+project summary plus the user's prompt. The default `OfflineCreativeProvider`
+is deterministic, local, and network-free. A host may inject another provider
+factory without altering project, script, or render-domain code.
+
+```mermaid
+flowchart LR
+    click[Explicit Generate action] --> context[Prompt + compact project context]
+    context --> provider[CreativeProvider interface]
+    provider --> editor[Editable JSON result]
+    editor -->|Save draft| library[projects/project/creative/*.json]
+    editor -->|Apply script| script[Validated script.json]
+    editor -->|Apply character| project[Validated project.json]
+    library -. never loaded .-> render[RenderPipeline]
+```
+
+The dashed relationship is intentionally non-executable: saved creative drafts
+are not render inputs. Script and character results enter core configuration
+only after the user reviews them and explicitly applies them through the same
+validators used by manual edits. Background and character visual concepts
+must become ordinary imported assets before the renderer can use them.
 
 ## Inputs and Persistent Project Model
 

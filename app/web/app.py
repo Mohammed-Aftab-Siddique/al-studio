@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import mimetypes
 import re
@@ -17,6 +18,7 @@ from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from app.audio.kokoro import KokoroVoiceEngine
+from app.creative import CreativeContext, CreativeKind, CreativeProvider, OfflineCreativeProvider
 from app.pipeline import RenderPipeline
 from app.project import AUDIO_EXTENSIONS, IMAGE_EXTENSIONS, ProjectAssetManager, ProjectConfig
 from app.script import load_script, parse_script, validate_script_references
@@ -42,6 +44,16 @@ class ProjectDocument(BaseModel):
 class VoicePayload(BaseModel):
     text: str
     voice: str
+
+
+class CreativePayload(BaseModel):
+    kind: CreativeKind
+    prompt: str
+
+
+class CreativeSavePayload(BaseModel):
+    kind: CreativeKind
+    draft: dict[str, Any]
 
 
 def _slug(value: str) -> str:
@@ -72,6 +84,7 @@ def create_app(
     root: Path = DEFAULT_ROOT,
     pipeline_factory: Callable[[Path], RenderPipeline] = RenderPipeline,
     voice_engine_factory: Callable[[], Any] = KokoroVoiceEngine,
+    creative_provider_factory: Callable[[], CreativeProvider] = OfflineCreativeProvider,
 ) -> FastAPI:
     """Build an app with injectable roots and engines for isolated tests."""
     workspace = root.resolve()
@@ -271,6 +284,61 @@ def create_app(
         except Exception as error:
             raise HTTPException(500, f"Voice preview failed: {error}") from error
         return {"url": f"/media/web/previews/{preview_id}.wav", "path": str(output)}
+
+    @web.post("/api/projects/{name}/creative")
+    async def generate_creative_draft(name: str, payload: CreativePayload) -> dict[str, Any]:
+        path = project_path(name, "project.json")
+        if not path.is_file():
+            raise HTTPException(404, "Project not found")
+        try:
+            project = ProjectConfig.from_dict(_json(path))
+            context = CreativeContext(
+                project_name=project.name,
+                scene_ids=tuple(scene.scene_id for scene in project.scenes),
+                character_names=tuple(character.name for character in project.characters),
+            )
+            provider = creative_provider_factory()
+            draft = provider.generate(payload.kind, payload.prompt, context)
+        except HTTPException:
+            raise
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
+        except Exception as error:
+            raise HTTPException(502, f"Creative provider failed: {error}") from error
+        return {
+            "provider": provider.provider_id,
+            "kind": payload.kind,
+            "draft": draft,
+            "render_dependency": False,
+        }
+
+    @web.get("/api/projects/{name}/creative")
+    async def list_creative_drafts(name: str) -> list[dict[str, str]]:
+        if not project_path(name, "project.json").is_file():
+            raise HTTPException(404, "Project not found")
+        directory = _within(projects_root, name, "creative")
+        if not directory.exists():
+            return []
+        return [
+            {"name": path.stem, "path": str(path.relative_to(workspace))}
+            for path in sorted(directory.glob("*.json"))
+            if path.is_file()
+        ]
+
+    @web.post("/api/projects/{name}/creative/save", status_code=201)
+    async def save_creative_draft(name: str, payload: CreativeSavePayload) -> dict[str, str]:
+        if not project_path(name, "project.json").is_file():
+            raise HTTPException(404, "Project not found")
+        serialized = json.dumps(
+            {"kind": payload.kind, "draft": payload.draft}, sort_keys=True, indent=2
+        )
+        digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:10]
+        identifier = payload.draft.get("id") or payload.draft.get("title") or payload.kind
+        filename = f"{_slug(str(identifier)) or payload.kind}-{digest}.json"
+        path = _within(projects_root, name, "creative", filename)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(serialized + "\n", encoding="utf-8")
+        return {"status": "saved", "name": path.stem, "path": str(path.relative_to(workspace))}
 
     @web.post("/api/projects/{name}/validate")
     async def validate_project(name: str) -> dict[str, Any]:

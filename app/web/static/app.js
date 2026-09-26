@@ -1,9 +1,9 @@
 "use strict";
 
-const state = { projectName: "", project: null, script: null, scene: 0, composerScene: 0, selectedInstance: "", composerAssets: [], pointerDrag: null, animationPreviewTime: null, animationPreviewFrame: null, jobTimer: null };
+const state = { projectName: "", project: null, script: null, scene: 0, composerScene: 0, selectedInstance: "", composerAssets: [], pointerDrag: null, animationPreviewTime: null, animationPreviewFrame: null, jobTimer: null, creativeKind: "" };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const titles = { projects: "Projects", scene: "Scene composer", script: "Script editor", assets: "Asset library", voice: "Voice lab", render: "Render desk" };
+const titles = { projects: "Projects", scene: "Scene composer", script: "Script editor", creative: "Creative lab", assets: "Asset library", voice: "Voice lab", render: "Render desk" };
 
 async function api(path, options = {}) {
   const response = await fetch(path, options);
@@ -33,6 +33,7 @@ function showView(name) {
   history.replaceState(null, "", `#${name}`);
   if (name === "assets") loadAssets();
   if (name === "scene") { loadComposerAssets(); renderComposer(); }
+  if (name === "creative") loadCreativeDrafts();
 }
 
 async function loadProjects(selectName = state.projectName) {
@@ -57,6 +58,12 @@ async function openProject(name, destination = "script") {
     state.scene = 0;
     state.composerScene = 0;
     state.selectedInstance = "";
+    state.creativeKind = "";
+    $("#creative-result").value = "";
+    $("#creative-result-title").textContent = "No draft yet";
+    $("#creative-dirty-state").textContent = "Not saved";
+    $("#save-creative").disabled = true;
+    $("#apply-creative").disabled = true;
     $("#project-select").value = name;
     renderScript();
     renderComposer();
@@ -723,6 +730,91 @@ async function attachCapabilities() {
   } catch (error) { toast(error.message, true); }
 }
 
+function editableCreativeDraft() {
+  const value = $("#creative-result").value.trim();
+  if (!value) throw new Error("Generate or enter a draft first");
+  const draft = JSON.parse(value);
+  if (!draft || typeof draft !== "object" || Array.isArray(draft)) throw new Error("Draft must be a JSON object");
+  return draft;
+}
+
+async function generateCreativeDraft() {
+  if (!state.projectName) return toast("Open a project first", true);
+  const prompt = $("#creative-prompt").value.trim();
+  if (!prompt) return toast("Describe what you want to explore", true);
+  const button = $("#generate-creative");
+  button.disabled = true;
+  try {
+    const kind = $("#creative-kind").value;
+    const result = await api(`/api/projects/${encodeURIComponent(state.projectName)}/creative`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, prompt }) });
+    state.creativeKind = result.kind;
+    $("#creative-result").value = JSON.stringify(result.draft, null, 2);
+    $("#creative-result-title").textContent = `${result.kind.replace(/^./, (letter) => letter.toUpperCase())} draft`;
+    $("#creative-provider").textContent = `${result.provider} · optional · not used by rendering`;
+    $("#creative-dirty-state").textContent = "Editable · not saved";
+    $("#save-creative").disabled = false;
+    $("#apply-creative").disabled = false;
+    toast("Editable creative draft generated");
+  } catch (error) { toast(error.message, true); }
+  finally { button.disabled = false; }
+}
+
+async function saveCreativeDraft() {
+  if (!state.projectName) return toast("Open a project first", true);
+  try {
+    const draft = editableCreativeDraft();
+    const kind = state.creativeKind || $("#creative-kind").value;
+    const saved = await api(`/api/projects/${encodeURIComponent(state.projectName)}/creative/save`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, draft }) });
+    $("#creative-dirty-state").textContent = `Saved · ${saved.name}`;
+    await loadCreativeDrafts();
+    toast("Reusable creative draft saved");
+    return saved;
+  } catch (error) { toast(error.message, true); return null; }
+}
+
+async function applyCreativeDraft() {
+  if (!state.projectName) return toast("Open a project first", true);
+  try {
+    const draft = editableCreativeDraft();
+    const kind = state.creativeKind || $("#creative-kind").value;
+    if (kind === "script") {
+      if (!Array.isArray(draft.events)) throw new Error("Script draft requires an events list");
+      const target = state.script.scenes.find((scene) => scene.scene_id === draft.scene_id) || state.script.scenes[0];
+      if (!target) throw new Error("Project script has no scene to receive the draft");
+      const previous = [...target.events];
+      target.events.push(...draft.events);
+      try { await api(`/api/projects/${encodeURIComponent(state.projectName)}/script`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: state.script }) }); }
+      catch (error) { target.events = previous; throw error; }
+      state.scene = state.script.scenes.indexOf(target);
+      renderScript(); showView("script");
+      toast("Script draft applied and saved");
+      return;
+    }
+    if (kind === "character") {
+      const character = draft.character;
+      if (!character?.name || !character?.voice_id) throw new Error("Character draft requires name and voice_id");
+      state.project.characters ||= [];
+      if (state.project.characters.some((item) => item.name === character.name)) throw new Error(`Character already exists: ${character.name}`);
+      const config = { name: character.name, voice_id: character.voice_id, animation: { idle_motion: true, mouth_style: "simple" } };
+      state.project.characters.push(config);
+      try { await api(`/api/projects/${encodeURIComponent(state.projectName)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: state.project }) }); }
+      catch (error) { state.project.characters.pop(); throw error; }
+      toast(`Character ${character.name} applied to project`);
+      return;
+    }
+    if (await saveCreativeDraft()) toast("Concept attached to the project’s reusable draft library");
+  } catch (error) { toast(error.message, true); }
+}
+
+async function loadCreativeDrafts() {
+  const node = $("#creative-saved");
+  if (!state.projectName) { node.innerHTML = '<div class="notice">Open a project to view its saved drafts.</div>'; return; }
+  try {
+    const drafts = await api(`/api/projects/${encodeURIComponent(state.projectName)}/creative`);
+    node.innerHTML = drafts.map((draft) => `<article class="asset-card"><div class="asset-icon">◈</div><h3>${escapeHtml(draft.name)}</h3><p>${escapeHtml(draft.path)}</p></article>`).join("") || '<div class="notice">No creative drafts saved yet.</div>';
+  } catch (error) { toast(error.message, true); }
+}
+
 async function previewVoice() {
   const status = $("#voice-status");
   status.textContent = "Generating local audio…";
@@ -835,6 +927,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#attach-capabilities").addEventListener("click", attachCapabilities);
   $("#asset-file").addEventListener("change", (event) => { const file = event.target.files[0]; if (file) $(".file-drop strong").textContent = file.name; });
   $("#preview-voice").addEventListener("click", previewVoice);
+  $("#generate-creative").addEventListener("click", generateCreativeDraft);
+  $("#save-creative").addEventListener("click", saveCreativeDraft);
+  $("#apply-creative").addEventListener("click", applyCreativeDraft);
+  $("#refresh-creative").addEventListener("click", loadCreativeDrafts);
+  $("#creative-result").addEventListener("input", () => { if (!$("#save-creative").disabled) $("#creative-dirty-state").textContent = "Edited · not saved"; });
   $("#validate-project").addEventListener("click", validateProject);
   $("#dry-run").addEventListener("click", () => startRender(true));
   $("#start-render").addEventListener("click", () => startRender(false));
